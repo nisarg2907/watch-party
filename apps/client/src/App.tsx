@@ -1,7 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 import YouTube from 'react-youtube'
-import { extractVideoId, SessionState } from '@watchparty/shared'
+import {
+  extractVideoId,
+  SocketEvents,
+  SessionState,
+  SessionPlayBroadcast,
+  SessionPauseBroadcast,
+  SessionSeekBroadcast,
+  SessionVideoChangeBroadcast,
+  SessionUpdateBroadcast,
+  SessionPlayPayload,
+  SessionPausePayload,
+  SessionSeekPayload,
+  SessionChangeVideoPayload,
+} from '@watchparty/shared'
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://192.168.1.12:4000'
 
@@ -29,7 +42,7 @@ function App() {
       setConnectionError(err.message ?? 'Unable to connect')
     })
 
-    newSocket.on('session:init', (state: SessionState) => {
+    newSocket.on(SocketEvents.INIT, (state: SessionState) => {
       // Initialize last seen sequence
       if (typeof state.seq === 'number') {
         lastSeqRef.current = state.seq
@@ -46,7 +59,32 @@ function App() {
       }
     })
 
-    newSocket.on('session:play', (data: { time: number; seq: number }) => {
+    newSocket.on(SocketEvents.UPDATE, (state: SessionUpdateBroadcast) => {
+      // Ignore stale updates
+      if (typeof state.seq === 'number' && state.seq <= lastSeqRef.current) return
+      if (typeof state.seq === 'number') {
+        lastSeqRef.current = state.seq
+      }
+
+      setSessionState(state)
+
+      const player = playerRef.current
+      if (state.videoId && player) {
+        const localTime = player.getCurrentTime()
+        const delta = state.playbackTime - localTime
+        // Only correct if significantly off to avoid jitter
+        if (Math.abs(delta) > 0.4) {
+          player.seekTo(state.playbackTime, true)
+        }
+        if (state.isPlaying) {
+          player.playVideo()
+        } else {
+          player.pauseVideo()
+        }
+      }
+    })
+
+    newSocket.on(SocketEvents.PLAY_BROADCAST, (data: SessionPlayBroadcast) => {
       if (data.seq <= lastSeqRef.current) return
       lastSeqRef.current = data.seq
       const player = playerRef.current
@@ -62,7 +100,7 @@ function App() {
       setSessionState(prev => (prev ? { ...prev, isPlaying: true } : null))
     })
 
-    newSocket.on('session:pause', (data: { time: number; seq: number }) => {
+    newSocket.on(SocketEvents.PAUSE_BROADCAST, (data: SessionPauseBroadcast) => {
       if (data.seq <= lastSeqRef.current) return
       lastSeqRef.current = data.seq
       const player = playerRef.current
@@ -77,7 +115,7 @@ function App() {
       setSessionState(prev => (prev ? { ...prev, isPlaying: false } : null))
     })
 
-    newSocket.on('session:seek', (data: { time: number; seq: number }) => {
+    newSocket.on(SocketEvents.SEEK_BROADCAST, (data: SessionSeekBroadcast) => {
       if (data.seq <= lastSeqRef.current) return
       lastSeqRef.current = data.seq
       const player = playerRef.current
@@ -91,7 +129,7 @@ function App() {
       setSessionState(prev => (prev ? { ...prev, playbackTime: data.time } : null))
     })
 
-    newSocket.on('session:videoChange', (data: { videoId: string; seq: number }) => {
+    newSocket.on(SocketEvents.VIDEO_CHANGE, (data: SessionVideoChangeBroadcast) => {
       if (data.seq <= lastSeqRef.current) return
       lastSeqRef.current = data.seq
       setSessionState(prev => (prev ? { ...prev, videoId: data.videoId, playbackTime: 0 } : null))
@@ -106,7 +144,8 @@ function App() {
     const videoId = extractVideoId(videoUrl)
     if (videoId && socket) {
       setIsSettingVideo(true)
-      socket.emit('session:changeVideo', { videoId })
+      const payload: SessionChangeVideoPayload = { videoId }
+      socket.emit(SocketEvents.CHANGE_VIDEO, payload)
       setVideoUrl('')
       // Clear loading state shortly after to keep UI snappy
       setTimeout(() => setIsSettingVideo(false), 400)
@@ -117,7 +156,8 @@ function App() {
     const player = playerRef.current
     if (socket && player) {
       const currentTime = player.getCurrentTime()
-      socket.emit('session:play', { time: currentTime })
+      const payload: SessionPlayPayload = { time: currentTime }
+      socket.emit(SocketEvents.PLAY, payload)
     }
   }
 
@@ -125,13 +165,15 @@ function App() {
     const player = playerRef.current
     if (socket && player) {
       const currentTime = player.getCurrentTime()
-      socket.emit('session:pause', { time: currentTime })
+      const payload: SessionPausePayload = { time: currentTime }
+      socket.emit(SocketEvents.PAUSE, payload)
     }
   }
 
   const handleSeek = (event: YT.PlayerEvent) => {
     if (socket) {
-      socket.emit('session:seek', { time: event.data })
+      const payload: SessionSeekPayload = { time: event.data }
+      socket.emit(SocketEvents.SEEK, payload)
     }
   }
 
