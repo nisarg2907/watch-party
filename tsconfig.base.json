@@ -3,7 +3,7 @@
     "target": "ES2020",
     "module": "ESNext",
     "lib": ["ES2020"],
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
     "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
@@ -12,7 +12,7 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@watchparty/shared": ["packages/shared"]
+      "@watchparty/shared": ["packages/shared/src"]
     }
   }
 }

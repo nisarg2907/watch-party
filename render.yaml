@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: watchparty-server
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: pnpm install && pnpm run build --filter=@watchparty/server...
+    startCommand: node apps/server/dist/apps/server/src/server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        fromGroup: web

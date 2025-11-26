@@ -11,6 +11,9 @@ dist
 build
 *.local
 
+# TypeScript build artifacts
+*.tsbuildinfo
+
 # Misc
 .DS_Store
 *.pem
