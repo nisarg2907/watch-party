@@ -6,9 +6,8 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "moduleResolution": "bundler",
     "paths": {
-      "@watchparty/shared": ["../../packages/shared/dist"]
+      "@watchparty/shared": ["../../packages/shared/src", "../../packages/shared/dist"]
     }
   },
   "include": ["src/**/*"],

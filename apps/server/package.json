@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "pnpm --filter @watchparty/shared build && tsc",
+    "prebuild": "cd ../.. && pnpm --filter @watchparty/shared build",
+    "build": "tsc",
     "start": "node dist/server.js"
   },
   "dependencies": {
