@@ -5,7 +5,11 @@
     "composite": false,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "baseUrl": "../..",
+    "paths": {
+      "@watchparty/shared": ["packages/shared/dist"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
