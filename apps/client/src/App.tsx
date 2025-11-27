@@ -185,7 +185,7 @@ function App() {
     return () => {
       newSocket.close()
     }
-  }, [hasJoined])
+  }, [])
 
   // Join handler
   const handleJoin = useCallback(() => {
