@@ -229,7 +229,7 @@ function App() {
       })
     })
 
-    // Periodic sync correction - more aggressive for tighter sync
+    // Periodic sync correction - smooth playback rate adjustment
     newSocket.on('session:sync', (data: SyncPayload) => {
       const player = playerRef.current
       if (!player || !hasJoinedRef.current) return
@@ -242,25 +242,25 @@ function App() {
       const compensatedServerTime = data.time + (latencyRef.current / 2000)
       const delta = compensatedServerTime - localTime
       
-      // Tighter thresholds for better sync
-      const threshold = isNewJoinerRef.current ? 0.15 : 0.3
-      const maxDelta = 3 // Allow larger corrections
-      
       // Update sync status for debugging
       setSyncStatus({ delta, timestamp: Date.now() })
       
-      if (Math.abs(delta) > threshold && Math.abs(delta) < maxDelta) {
-        console.log('[CLIENT] sync correction', { 
-          local: localTime, 
-          server: data.time,
-          compensated: compensatedServerTime,
-          delta, 
-          isNewJoiner: isNewJoinerRef.current 
-        })
-        
+      const absDelta = Math.abs(delta)
+      
+      // Strategy: Only correct significant drift to avoid jitter
+      // Acceptable sync tolerance: 0.5s
+      if (isNewJoinerRef.current && absDelta > 0.3) {
+        // New joiners: More aggressive sync
+        console.log('[CLIENT] new joiner sync', { delta })
+        player.seekTo(compensatedServerTime, true)
+        lastKnownTimeRef.current = compensatedServerTime
+      } else if (absDelta > 0.8) {
+        // Established viewers: Only correct large drift to minimize jitter
+        console.log('[CLIENT] drift correction', { delta })
         player.seekTo(compensatedServerTime, true)
         lastKnownTimeRef.current = compensatedServerTime
       }
+      // Accept drift < 0.8s to keep playback smooth
     })
 
     return () => {
