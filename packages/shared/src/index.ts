@@ -82,6 +82,7 @@ export interface ClientToServerEvents {
   'session:pause': (data: PauseEventPayload) => void
   'session:seek': (data: SeekEventPayload) => void
   'session:changeVideo': (data: ChangeVideoPayload) => void
+  'ping': () => void
 }
 
 /**
@@ -96,6 +97,7 @@ export interface ServerToClientEvents {
   'session:userJoined': (data: UserJoinedPayload) => void
   'session:userLeft': (data: UserLeftPayload) => void
   'session:sync': (data: SyncPayload) => void
+  'pong': () => void
 }
 
 /**

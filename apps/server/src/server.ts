@@ -48,7 +48,7 @@ const PORT = process.env.PORT || 4000
 // Store socket ID -> username mapping
 const userMap = new Map<string, string>()
 
-// Periodic sync heartbeat - broadcasts current time every 3 seconds
+// Periodic sync heartbeat - broadcasts current time every 1 second for tighter sync
 setInterval(() => {
   if (sessionState.isPlaying && sessionState.videoId) {
     const currentTime = getAuthoritativeTime()
@@ -58,7 +58,7 @@ setInterval(() => {
       lastUpdatedAt: sessionState.lastUpdatedAt,
     })
   }
-}, 3000)
+}, 1000)
 
 let sessionState: SessionState = {
   videoId: '',
@@ -111,6 +111,11 @@ io.on('connection', (socket) => {
     { id: socket.id, origin: origin ?? 'n/a', referer: referer ?? 'n/a' },
   )
 
+  // Handle ping/pong for latency measurement
+  socket.on('ping', () => {
+    socket.emit('pong')
+  })
+
   // Send current session state to newly connected client (without username yet)
   socket.emit('session:init', {
     ...sessionState,
@@ -130,8 +135,17 @@ io.on('connection', (socket) => {
     
     console.log(`[USER] ${data.username} joined`, socket.id)
     
-    // Broadcast to all clients that a user joined
-    io.emit('session:userJoined', { user })
+    // Send immediate sync state to the joining user with current authoritative time
+    const currentTime = getAuthoritativeTime()
+    socket.emit('session:init', {
+      ...sessionState,
+      playbackTime: currentTime,
+    })
+    
+    console.log(`[SYNC] sent current time ${currentTime} to new joiner ${data.username}`)
+    
+    // Broadcast to all OTHER clients that a user joined
+    socket.broadcast.emit('session:userJoined', { user })
   })
 
   socket.on('session:play', (data: PlayEventPayload) => {

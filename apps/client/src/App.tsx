@@ -38,8 +38,8 @@ function App() {
   const pendingStateRef = useRef<SessionState | null>(null)
   const lastKnownTimeRef = useRef<number>(0)
   const seekCheckIntervalRef = useRef<NodeJS.Timeout | null>(null)
-  const playDelayTimerRef = useRef<NodeJS.Timeout | null>(null)
-  const seekDelayTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const latencyRef = useRef<number>(0) // Track network latency
+  const isNewJoinerRef = useRef<boolean>(false) // Track if this is a fresh join
 
   // Socket setup
   useEffect(() => {
@@ -49,6 +49,15 @@ function App() {
     newSocket.on('connect', () => {
       setConnectionStatus('connected')
       setConnectionError(null)
+      
+      // Measure latency with ping/pong
+      const pingStart = Date.now()
+      newSocket.emit('ping')
+      newSocket.once('pong', () => {
+        const rtt = Date.now() - pingStart
+        latencyRef.current = rtt
+        console.log('[CLIENT] measured latency:', rtt, 'ms')
+      })
     })
 
     newSocket.on('connect_error', (err) => {
@@ -67,18 +76,30 @@ function App() {
       const player = playerRef.current
       if (state.videoId && player && hasJoinedRef.current) {
         isHandlingRemoteEventRef.current = true
-        player.seekTo(state.playbackTime, true)
+        
+        // Account for network latency - add half RTT to compensate for time in transit
+        const compensatedTime = state.playbackTime + (latencyRef.current / 2000)
+        console.log('[CLIENT] syncing to time', compensatedTime, 'latency:', latencyRef.current)
+        
+        player.seekTo(compensatedTime, true)
+        lastKnownTimeRef.current = compensatedTime
+        
+        // Immediately set play state with no delay
+        if (state.isPlaying) {
+          player.playVideo()
+        } else {
+          player.pauseVideo()
+        }
+        
+        // Mark as new joiner for aggressive sync
+        isNewJoinerRef.current = true
+        setTimeout(() => {
+          isNewJoinerRef.current = false
+        }, 5000) // Aggressive sync for first 5 seconds
         
         setTimeout(() => {
-          if (state.isPlaying) {
-            player.playVideo()
-          } else {
-            player.pauseVideo()
-          }
-          setTimeout(() => {
-            isHandlingRemoteEventRef.current = false
-          }, 200)
-        }, 200)
+          isHandlingRemoteEventRef.current = false
+        }, 100)
       }
     })
 
@@ -93,13 +114,17 @@ function App() {
         isHandlingRemoteEventRef.current = true
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
-        if (Math.abs(delta) > 0.3) {
+        
+        // Always sync to exact time from server
+        if (Math.abs(delta) > 0.1) {
           player.seekTo(data.time, true)
+          lastKnownTimeRef.current = data.time
         }
         player.playVideo()
+        
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
-        }, 300)
+        }, 100)
       }
       setSessionState(prev => (prev ? { ...prev, isPlaying: true, playbackTime: data.time } : null))
     })
@@ -115,13 +140,17 @@ function App() {
         isHandlingRemoteEventRef.current = true
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
-        if (Math.abs(delta) > 0.3) {
+        
+        // Always sync to exact time from server
+        if (Math.abs(delta) > 0.1) {
           player.seekTo(data.time, true)
+          lastKnownTimeRef.current = data.time
         }
         player.pauseVideo()
+        
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
-        }, 300)
+        }, 100)
       }
       setSessionState(prev => (prev ? { ...prev, isPlaying: false, playbackTime: data.time } : null))
     })
@@ -135,14 +164,12 @@ function App() {
       const player = playerRef.current
       if (player && hasJoinedRef.current) {
         isHandlingRemoteEventRef.current = true
-        const localTime = player.getCurrentTime()
-        const delta = data.time - localTime
-        if (Math.abs(delta) > 0.2) {
-          player.seekTo(data.time, true)
-        }
+        player.seekTo(data.time, true)
+        lastKnownTimeRef.current = data.time
+        
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
-        }, 300)
+        }, 100)
       }
       setSessionState(prev => (prev ? { ...prev, playbackTime: data.time } : null))
     })
@@ -186,7 +213,7 @@ function App() {
       })
     })
 
-    // Periodic sync correction
+    // Periodic sync correction - more aggressive for tighter sync
     newSocket.on('session:sync', (data: SyncPayload) => {
       const player = playerRef.current
       if (!player || !hasJoinedRef.current || isHandlingRemoteEventRef.current) return
@@ -194,17 +221,25 @@ function App() {
       const localTime = player.getCurrentTime()
       const delta = data.time - localTime
       
-      // Only correct if drift is significant (>500ms) but not too large (>2s means likely user action)
-      if (Math.abs(delta) > 0.5 && Math.abs(delta) < 2) {
-        console.log('[CLIENT] sync correction', { local: localTime, server: data.time, delta })
+      // More aggressive sync for new joiners, looser for established viewers
+      const threshold = isNewJoinerRef.current ? 0.2 : 0.5
+      const maxDelta = 3 // Allow larger corrections
+      
+      if (Math.abs(delta) > threshold && Math.abs(delta) < maxDelta) {
+        console.log('[CLIENT] sync correction', { 
+          local: localTime, 
+          server: data.time, 
+          delta, 
+          isNewJoiner: isNewJoinerRef.current 
+        })
         
-        // Smooth correction: seek to server time
         isHandlingRemoteEventRef.current = true
         player.seekTo(data.time, true)
+        lastKnownTimeRef.current = data.time
         
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
-        }, 200)
+        }, 100)
       }
     })
 
@@ -243,17 +278,8 @@ function App() {
       })
     }
     
-    // If there's a pending state with a playing video, start it
-    setTimeout(() => {
-      const state = pendingStateRef.current
-      if (state && state.videoId && state.isPlaying && playerRef.current) {
-        isHandlingRemoteEventRef.current = true
-        playerRef.current.playVideo()
-        setTimeout(() => {
-          isHandlingRemoteEventRef.current = false
-        }, 300)
-      }
-    }, 500)
+    // Mark as new joiner for aggressive sync
+    isNewJoinerRef.current = true
   }, [socket, inputUsername])
 
   const handleVideoChange = useCallback(() => {
@@ -271,17 +297,10 @@ function App() {
     
     const player = playerRef.current
     if (socket && player) {
-      // Clear any existing timer
-      if (playDelayTimerRef.current) {
-        clearTimeout(playDelayTimerRef.current)
-      }
-      
-      // Add a small delay (150ms) before emitting play to give user smoother experience
-      playDelayTimerRef.current = setTimeout(() => {
-        const currentTime = player.getCurrentTime()
-        console.log('[CLIENT] emitting play', currentTime)
-        socket.emit('session:play', { time: currentTime })
-      }, 150)
+      // Emit immediately - no delay for better sync
+      const currentTime = player.getCurrentTime()
+      console.log('[CLIENT] emitting play', currentTime)
+      socket.emit('session:play', { time: currentTime })
     }
   }, [socket])
 
@@ -307,18 +326,10 @@ function App() {
       const currentTime = player.getCurrentTime()
       const timeDiff = Math.abs(currentTime - lastKnownTimeRef.current)
       
+      // Detect seek and emit immediately
       if (timeDiff > 1.5 && lastKnownTimeRef.current > 0) {
         console.log('[CLIENT] detected seek', { from: lastKnownTimeRef.current, to: currentTime })
-        
-        // Clear any existing seek delay timer
-        if (seekDelayTimerRef.current) {
-          clearTimeout(seekDelayTimerRef.current)
-        }
-        
-        // Add 400ms delay before emitting seek to allow user to find the right position
-        seekDelayTimerRef.current = setTimeout(() => {
-          socket.emit('session:seek', { time: currentTime })
-        }, 400)
+        socket.emit('session:seek', { time: currentTime })
       }
       
       lastKnownTimeRef.current = currentTime
@@ -329,12 +340,6 @@ function App() {
     return () => {
       if (seekCheckIntervalRef.current) {
         clearInterval(seekCheckIntervalRef.current)
-      }
-      if (seekDelayTimerRef.current) {
-        clearTimeout(seekDelayTimerRef.current)
-      }
-      if (playDelayTimerRef.current) {
-        clearTimeout(playDelayTimerRef.current)
       }
     }
   }, [socket, hasJoined])
@@ -348,25 +353,33 @@ function App() {
       isHandlingRemoteEventRef.current = true
       console.log('[CLIENT] applying pending state', state)
       
-      event.target.seekTo(state.playbackTime, true)
-      lastKnownTimeRef.current = state.playbackTime
+      // Account for latency when syncing
+      const compensatedTime = state.playbackTime + (latencyRef.current / 2000)
+      event.target.seekTo(compensatedTime, true)
+      lastKnownTimeRef.current = compensatedTime
+      
+      // No delay - apply state immediately
+      if (state.isPlaying) {
+        console.log('[CLIENT] autoplay from pending state')
+        try {
+          event.target.playVideo()
+          console.log('[CLIENT] autoplay requested')
+        } catch (err) {
+          console.error('[CLIENT] autoplay failed:', err)
+        }
+      } else {
+        event.target.pauseVideo()
+      }
+      
+      // Mark as new joiner
+      isNewJoinerRef.current = true
+      setTimeout(() => {
+        isNewJoinerRef.current = false
+      }, 5000)
       
       setTimeout(() => {
-        if (state.isPlaying) {
-          console.log('[CLIENT] autoplay from pending state')
-          try {
-            event.target.playVideo()
-            console.log('[CLIENT] autoplay requested')
-          } catch (err) {
-            console.error('[CLIENT] autoplay failed:', err)
-          }
-        } else {
-          event.target.pauseVideo()
-        }
-        setTimeout(() => {
-          isHandlingRemoteEventRef.current = false
-        }, 300)
-      }, 300)
+        isHandlingRemoteEventRef.current = false
+      }, 100)
     }
   }, [hasJoined])
 
