@@ -42,6 +42,7 @@ function App() {
   const latencyRef = useRef<number>(0) // Track network latency
   const isNewJoinerRef = useRef<boolean>(false) // Track if this is a fresh join
   const expectedPlayerStateRef = useRef<'playing' | 'paused' | null>(null) // Track expected state
+  const mySocketIdRef = useRef<string | null>(null) // Track own socket ID
 
   // Socket setup
   useEffect(() => {
@@ -51,6 +52,7 @@ function App() {
     newSocket.on('connect', () => {
       setConnectionStatus('connected')
       setConnectionError(null)
+      mySocketIdRef.current = newSocket.id || null
       
       // Measure latency with ping/pong
       const pingStart = Date.now()
@@ -109,7 +111,12 @@ function App() {
       if (data.seq <= lastSeqRef.current) return
       console.log('[CLIENT] session:play', data)
       lastSeqRef.current = data.seq
-      setLastAction({ action: 'played', username: data.username })
+      
+      // Only show action if it's from another user
+      const isFromMe = socket?.id === mySocketIdRef.current
+      if (!isFromMe) {
+        setLastAction({ action: 'played', username: data.username })
+      }
       
       const player = playerRef.current
       if (player && hasJoinedRef.current) {
@@ -119,8 +126,11 @@ function App() {
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
         
-        // Always sync to exact time from server
-        if (Math.abs(delta) > 0.1) {
+        // Reduce snap: only seek if drift is significant OR if from another user
+        if (!isFromMe && Math.abs(delta) > 0.3) {
+          player.seekTo(data.time, true)
+          lastKnownTimeRef.current = data.time
+        } else if (isFromMe && Math.abs(delta) > 1.0) {
           player.seekTo(data.time, true)
           lastKnownTimeRef.current = data.time
         }
@@ -130,7 +140,6 @@ function App() {
           isHandlingRemoteEventRef.current = false
         }, 300)
         
-        // Clear expected state later to allow sync but prevent duplicate events
         setTimeout(() => {
           expectedPlayerStateRef.current = null
         }, 500)
@@ -142,7 +151,12 @@ function App() {
       if (data.seq <= lastSeqRef.current) return
       console.log('[CLIENT] session:pause', data)
       lastSeqRef.current = data.seq
-      setLastAction({ action: 'paused', username: data.username })
+      
+      // Only show action if it's from another user
+      const isFromMe = socket?.id === mySocketIdRef.current
+      if (!isFromMe) {
+        setLastAction({ action: 'paused', username: data.username })
+      }
       
       const player = playerRef.current
       if (player && hasJoinedRef.current) {
@@ -152,8 +166,11 @@ function App() {
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
         
-        // Always sync to exact time from server
-        if (Math.abs(delta) > 0.1) {
+        // Reduce snap: only seek if drift is significant OR if from another user
+        if (!isFromMe && Math.abs(delta) > 0.3) {
+          player.seekTo(data.time, true)
+          lastKnownTimeRef.current = data.time
+        } else if (isFromMe && Math.abs(delta) > 1.0) {
           player.seekTo(data.time, true)
           lastKnownTimeRef.current = data.time
         }
@@ -163,7 +180,6 @@ function App() {
           isHandlingRemoteEventRef.current = false
         }, 300)
         
-        // Clear expected state later to allow sync but prevent duplicate events
         setTimeout(() => {
           expectedPlayerStateRef.current = null
         }, 500)
@@ -175,7 +191,12 @@ function App() {
       if (data.seq <= lastSeqRef.current) return
       console.log('[CLIENT] session:seek', data)
       lastSeqRef.current = data.seq
-      setLastAction({ action: 'seeked', username: data.username })
+      
+      // Only show action if it's from another user
+      const isFromMe = socket?.id === mySocketIdRef.current
+      if (!isFromMe) {
+        setLastAction({ action: 'seeked', username: data.username })
+      }
       
       const player = playerRef.current
       if (player && hasJoinedRef.current) {
