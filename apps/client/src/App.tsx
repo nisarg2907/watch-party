@@ -43,6 +43,8 @@ function App() {
   const isNewJoinerRef = useRef<boolean>(false) // Track if this is a fresh join
   const expectedPlayerStateRef = useRef<'playing' | 'paused' | null>(null) // Track expected state
   const mySocketIdRef = useRef<string | null>(null) // Track own socket ID
+  const initializationCompleteRef = useRef<boolean>(false) // Track if initial session:init was processed
+  const lastSeekEmitRef = useRef<number>(0) // Track last seek emission for throttling
 
   // Socket setup
   useEffect(() => {
@@ -57,11 +59,23 @@ function App() {
       // Measure latency with ping/pong
       const pingStart = Date.now()
       newSocket.emit('ping')
-      newSocket.once('pong', () => {
+      const pongHandler = () => {
         const rtt = Date.now() - pingStart
         latencyRef.current = rtt
-        console.log('[CLIENT] measured latency:', rtt, 'ms')
-      })
+        newSocket.off('pong', pongHandler)
+      }
+      newSocket.once('pong', pongHandler)
+    })
+    
+    // Auto-rejoin on reconnection
+    newSocket.on('reconnect', () => {
+      console.log('[SOCKET] Reconnected - attempting to rejoin')
+      if (hasJoinedRef.current && username) {
+        // Reset initialization to allow fresh session:init
+        initializationCompleteRef.current = false
+        newSocket.emit('session:join', { username })
+        console.log('[SOCKET] Auto-rejoined as', username)
+      }
     })
 
     newSocket.on('connect_error', (err) => {
@@ -69,13 +83,25 @@ function App() {
       setConnectionError(err.message ?? 'Unable to connect')
     })
 
-    newSocket.on('session:init', (state: SessionState) => {
-      console.log('[CLIENT] session:init', state)
+    // Handle initial session state - use handler to allow re-initialization on rejoin
+    const handleSessionInit = (state: SessionState) => {
+      // Only process session:init when joining or if not yet initialized
+      if (initializationCompleteRef.current && hasJoinedRef.current) {
+        // Already initialized and user has joined - ignore subsequent init events
+        // unless it's a rejoin scenario (handled separately)
+        return
+      }
+      
       if (typeof state.seq === 'number') {
         lastSeqRef.current = state.seq
       }
       setSessionState(state)
       pendingStateRef.current = state
+      
+      // Mark initialization as complete on first call
+      if (!initializationCompleteRef.current) {
+        initializationCompleteRef.current = true
+      }
       
       const player = playerRef.current
       if (state.videoId && player && hasJoinedRef.current) {
@@ -83,7 +109,6 @@ function App() {
         
         // Account for network latency - add half RTT to compensate for time in transit
         const compensatedTime = state.playbackTime + (latencyRef.current / 2000)
-        console.log('[CLIENT] syncing to time', compensatedTime, 'latency:', latencyRef.current)
         
         player.seekTo(compensatedTime, true)
         lastKnownTimeRef.current = compensatedTime
@@ -105,11 +130,12 @@ function App() {
           isHandlingRemoteEventRef.current = false
         }, 100)
       }
-    })
+    }
+    
+    newSocket.on('session:init', handleSessionInit)
 
     newSocket.on('session:play', (data: PlayBroadcastPayload) => {
       if (data.seq <= lastSeqRef.current) return
-      console.log('[CLIENT] session:play', data)
       lastSeqRef.current = data.seq
       
       // Only show action if it's from another user
@@ -149,7 +175,6 @@ function App() {
 
     newSocket.on('session:pause', (data: PauseBroadcastPayload) => {
       if (data.seq <= lastSeqRef.current) return
-      console.log('[CLIENT] session:pause', data)
       lastSeqRef.current = data.seq
       
       // Only show action if it's from another user
@@ -189,7 +214,6 @@ function App() {
 
     newSocket.on('session:seek', (data: SeekBroadcastPayload) => {
       if (data.seq <= lastSeqRef.current) return
-      console.log('[CLIENT] session:seek', data)
       lastSeqRef.current = data.seq
       
       // Only show action if it's from another user
@@ -213,7 +237,6 @@ function App() {
 
     newSocket.on('session:videoChange', (data: VideoChangeBroadcastPayload) => {
       if (data.seq <= lastSeqRef.current) return
-      console.log('[CLIENT] session:videoChange', data)
       lastSeqRef.current = data.seq
       setLastAction({ action: 'changed video', username: data.username })
       setSessionState(prev => {
@@ -224,7 +247,6 @@ function App() {
     })
 
     newSocket.on('session:userJoined', (data: UserJoinedPayload) => {
-      console.log('[CLIENT] user joined', data.user)
       setSessionState(prev => {
         if (!prev) return prev
         return {
@@ -238,7 +260,6 @@ function App() {
     })
 
     newSocket.on('session:userLeft', (data: UserLeftPayload) => {
-      console.log('[CLIENT] user left', data)
       setSessionState(prev => {
         if (!prev) return prev
         const newUsers = { ...prev.users }
@@ -271,13 +292,9 @@ function App() {
       // Strategy: Only correct significant drift to avoid jitter
       // Acceptable sync tolerance: 0.5s
       if (isNewJoinerRef.current && absDelta > 0.3) {
-        // New joiners: More aggressive sync
-        console.log('[CLIENT] new joiner sync', { delta })
         player.seekTo(compensatedServerTime, true)
         lastKnownTimeRef.current = compensatedServerTime
       } else if (absDelta > 0.8) {
-        // Established viewers: Only correct large drift to minimize jitter
-        console.log('[CLIENT] drift correction', { delta })
         player.seekTo(compensatedServerTime, true)
         lastKnownTimeRef.current = compensatedServerTime
       }
@@ -298,7 +315,6 @@ function App() {
     setHasJoined(true)
     hasJoinedRef.current = true
     
-    console.log('[CLIENT] Joining with username:', trimmedUsername)
     socket.emit('session:join', { username: trimmedUsername })
     
     // Immediately add self to local state
@@ -340,7 +356,6 @@ function App() {
     if (socket && player) {
       // Emit immediately - no delay for better sync
       const currentTime = player.getCurrentTime()
-      console.log('[CLIENT] emitting play', currentTime)
       socket.emit('session:play', { time: currentTime })
     }
   }, [socket])
@@ -351,7 +366,6 @@ function App() {
     const player = playerRef.current
     if (socket && player) {
       const currentTime = player.getCurrentTime()
-      console.log('[CLIENT] emitting pause', currentTime)
       socket.emit('session:pause', { time: currentTime })
     }
   }, [socket])
@@ -367,10 +381,23 @@ function App() {
       const currentTime = player.getCurrentTime()
       const timeDiff = Math.abs(currentTime - lastKnownTimeRef.current)
       
-      // Detect seek and emit immediately
-      if (timeDiff > 1.5 && lastKnownTimeRef.current > 0) {
-        console.log('[CLIENT] detected seek', { from: lastKnownTimeRef.current, to: currentTime })
-        socket.emit('session:seek', { time: currentTime })
+      // Detect seek - only emit if it's a deliberate seek (not buffering/stuttering)
+      if (timeDiff > 2.0 && lastKnownTimeRef.current > 0) {
+        // Check player state to avoid false positives during buffering
+        const playerState = player.getPlayerState()
+        // UNSTARTED (5) or BUFFERING (3) might indicate network issues, not user seek
+        if (playerState === 5 || playerState === 3) {
+          // Don't emit seek during buffering or unstarted states
+          lastKnownTimeRef.current = currentTime
+          return
+        }
+        
+        // Throttle seek events - max 3 per second (300ms interval)
+        const now = Date.now()
+        if (now - lastSeekEmitRef.current >= 300) {
+          lastSeekEmitRef.current = now
+          socket.emit('session:seek', { time: currentTime })
+        }
       }
       
       lastKnownTimeRef.current = currentTime
@@ -386,13 +413,11 @@ function App() {
   }, [socket, hasJoined])
 
   const onReady = useCallback((event: { target: YT.Player }) => {
-    console.log('[CLIENT] player ready')
     playerRef.current = event.target
     
     const state = pendingStateRef.current
     if (state && state.videoId && hasJoinedRef.current) {
       isHandlingRemoteEventRef.current = true
-      console.log('[CLIENT] applying pending state', state)
       
       // Account for latency when syncing
       const compensatedTime = state.playbackTime + (latencyRef.current / 2000)
@@ -401,15 +426,22 @@ function App() {
       
       // No delay - apply state immediately
       if (state.isPlaying) {
-        console.log('[CLIENT] autoplay from pending state')
         try {
           event.target.playVideo()
-          console.log('[CLIENT] autoplay requested')
         } catch (err) {
-          console.error('[CLIENT] autoplay failed:', err)
+          console.warn('Failed to play video on ready:', err)
+          // Sync failed state back to server
+          setSessionState(prev => prev ? { ...prev, isPlaying: false } : null)
+          if (socket) {
+            socket.emit('session:pause', { time: event.target.getCurrentTime() })
+          }
         }
       } else {
-        event.target.pauseVideo()
+        try {
+          event.target.pauseVideo()
+        } catch (err) {
+          console.warn('Failed to pause video on ready:', err)
+        }
       }
       
       // Mark as new joiner
@@ -541,25 +573,20 @@ function App() {
                   onReady={onReady}
                   onStateChange={(event: YT.PlayerEvent) => {
                     if (isHandlingRemoteEventRef.current) {
-                      console.log('[CLIENT] ignoring state change during remote event', event.data)
                       return
                     }
                     
                     // Check if this state change matches our expected state (from remote)
                     if (event.data === 1 && expectedPlayerStateRef.current === 'playing') {
-                      console.log('[CLIENT] ignoring expected play state from remote')
                       return
                     }
                     if (event.data === 2 && expectedPlayerStateRef.current === 'paused') {
-                      console.log('[CLIENT] ignoring expected pause state from remote')
                       return
                     }
                     
                     if (event.data === 1) {
-                      console.log('[CLIENT] user played video')
                       handlePlay()
                     } else if (event.data === 2) {
-                      console.log('[CLIENT] user paused video')
                       handlePause()
                     }
                   }}

@@ -124,16 +124,29 @@ io.on('connection', (socket) => {
 
   // Handle user join with username
   socket.on('session:join', (data: JoinEventPayload) => {
+    // Validate and sanitize username
+    const rawUsername = (data.username || 'Anonymous')
+      .trim()
+      .slice(0, 50) // Max length 50 characters
+      .replace(/[<>]/g, '') // Basic XSS prevention - remove angle brackets
+    
+    const username = rawUsername || 'Anonymous' // Fallback if sanitization results in empty string
+    
+    if (!username || username.length === 0) {
+      console.warn('[USER] Invalid username rejected from', socket.id)
+      return
+    }
+    
     const user: User = {
       socketId: socket.id,
-      username: data.username,
+      username: username,
       joinedAt: Date.now(),
     }
     
-    userMap.set(socket.id, data.username)
+    userMap.set(socket.id, username)
     sessionState.users[socket.id] = user
     
-    console.log(`[USER] ${data.username} joined`, socket.id)
+    console.log(`[USER] ${username} joined`, socket.id)
     
     // Send immediate sync state to the joining user with current authoritative time
     const currentTime = getAuthoritativeTime()
@@ -212,27 +225,33 @@ io.on('connection', (socket) => {
   })
 
   socket.on('session:changeVideo', (data: ChangeVideoPayload) => {
-    const videoId = extractVideoId(data.videoId) || data.videoId
-    if (videoId) {
+    const videoId = extractVideoId(data.videoId)
+    
+    // Validate video ID: must be exactly 11 characters and alphanumeric with hyphens/underscores
+    if (!videoId || videoId.length !== 11 || !/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
       const username = userMap.get(socket.id) || 'Unknown'
-      const clientId = socket.id.substring(0, 8)
-      console.log('[EVENT] changeVideo from', username, clientId, 'videoId=', videoId)
-      updateSessionState({
-        videoId,
-        playbackTime: 0,
-        isPlaying: false,
-        lastAction: 'changeVideo',
-        lastActionBy: clientId,
-        lastActionByUsername: username,
-      })
-      console.log('[BROADCAST] videoChange videoId=', videoId, 'seq=', sessionState.seq)
-      io.emit('session:videoChange', {
-        videoId,
-        seq: sessionState.seq,
-        lastUpdatedAt: sessionState.lastUpdatedAt,
-        username,
-      })
+      console.warn('[EVENT] Invalid video ID rejected from', username, ':', data.videoId)
+      return // Silently reject invalid video IDs
     }
+    
+    const username = userMap.get(socket.id) || 'Unknown'
+    const clientId = socket.id.substring(0, 8)
+    console.log('[EVENT] changeVideo from', username, clientId, 'videoId=', videoId)
+    updateSessionState({
+      videoId,
+      playbackTime: 0,
+      isPlaying: false,
+      lastAction: 'changeVideo',
+      lastActionBy: clientId,
+      lastActionByUsername: username,
+    })
+    console.log('[BROADCAST] videoChange videoId=', videoId, 'seq=', sessionState.seq)
+    io.emit('session:videoChange', {
+      videoId,
+      seq: sessionState.seq,
+      lastUpdatedAt: sessionState.lastUpdatedAt,
+      username,
+    })
   })
 
   socket.on('disconnect', () => {
