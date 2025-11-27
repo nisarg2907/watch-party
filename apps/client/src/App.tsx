@@ -21,6 +21,7 @@ function App() {
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const [username, setUsername] = useState('')
   const [hasJoined, setHasJoined] = useState(false)
+  const hasJoinedRef = useRef(false)
   const [inputUsername, setInputUsername] = useState('')
   
   // Session State
@@ -61,7 +62,7 @@ function App() {
       pendingStateRef.current = state
       
       const player = playerRef.current
-      if (state.videoId && player && hasJoined) {
+      if (state.videoId && player && hasJoinedRef.current) {
         isHandlingRemoteEventRef.current = true
         player.seekTo(state.playbackTime, true)
         
@@ -85,7 +86,7 @@ function App() {
       setLastAction({ action: 'played', username: data.username })
       
       const player = playerRef.current
-      if (player && hasJoined) {
+      if (player && hasJoinedRef.current) {
         isHandlingRemoteEventRef.current = true
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
@@ -107,7 +108,7 @@ function App() {
       setLastAction({ action: 'paused', username: data.username })
       
       const player = playerRef.current
-      if (player && hasJoined) {
+      if (player && hasJoinedRef.current) {
         isHandlingRemoteEventRef.current = true
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
@@ -129,7 +130,7 @@ function App() {
       setLastAction({ action: 'seeked', username: data.username })
       
       const player = playerRef.current
-      if (player && hasJoined) {
+      if (player && hasJoinedRef.current) {
         isHandlingRemoteEventRef.current = true
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
@@ -194,6 +195,7 @@ function App() {
     const trimmedUsername = inputUsername.trim()
     setUsername(trimmedUsername)
     setHasJoined(true)
+    hasJoinedRef.current = true
     
     console.log('[CLIENT] Joining with username:', trimmedUsername)
     socket.emit('session:join', { username: trimmedUsername })
@@ -294,7 +296,7 @@ function App() {
     playerRef.current = event.target
     
     const state = pendingStateRef.current
-    if (state && state.videoId && hasJoined) {
+    if (state && state.videoId && hasJoinedRef.current) {
       isHandlingRemoteEventRef.current = true
       console.log('[CLIENT] applying pending state', state)
       
