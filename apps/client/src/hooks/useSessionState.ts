@@ -46,6 +46,7 @@ export const useSessionState = ({
   const mySocketIdRef = useRef<string | null>(null)
   const initializationCompleteRef = useRef<boolean>(false)
   const hasJoinedRef = useRef(false)
+  const lastActionTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     hasJoinedRef.current = hasJoined
@@ -107,6 +108,13 @@ export const useSessionState = ({
       const isFromMe = socket?.id === mySocketIdRef.current
       if (!isFromMe) {
         setLastAction({ action: 'played', username: data.username })
+        // Clear last action after 3 seconds
+        if (lastActionTimeoutRef.current) {
+          clearTimeout(lastActionTimeoutRef.current)
+        }
+        lastActionTimeoutRef.current = setTimeout(() => {
+          setLastAction(null)
+        }, 3000)
       }
       
       const player = playerRef.current
@@ -144,6 +152,13 @@ export const useSessionState = ({
       const isFromMe = socket?.id === mySocketIdRef.current
       if (!isFromMe) {
         setLastAction({ action: 'paused', username: data.username })
+        // Clear last action after 3 seconds
+        if (lastActionTimeoutRef.current) {
+          clearTimeout(lastActionTimeoutRef.current)
+        }
+        lastActionTimeoutRef.current = setTimeout(() => {
+          setLastAction(null)
+        }, 3000)
       }
       
       const player = playerRef.current
@@ -181,6 +196,13 @@ export const useSessionState = ({
       const isFromMe = socket?.id === mySocketIdRef.current
       if (!isFromMe) {
         setLastAction({ action: 'seeked', username: data.username })
+        // Clear last action after 3 seconds
+        if (lastActionTimeoutRef.current) {
+          clearTimeout(lastActionTimeoutRef.current)
+        }
+        lastActionTimeoutRef.current = setTimeout(() => {
+          setLastAction(null)
+        }, 3000)
       }
       
       const player = playerRef.current
@@ -200,6 +222,13 @@ export const useSessionState = ({
       if (data.seq <= lastSeqRef.current) return
       lastSeqRef.current = data.seq
       setLastAction({ action: 'changed video', username: data.username })
+      // Clear last action after 3 seconds
+      if (lastActionTimeoutRef.current) {
+        clearTimeout(lastActionTimeoutRef.current)
+      }
+      lastActionTimeoutRef.current = setTimeout(() => {
+        setLastAction(null)
+      }, 3000)
       setSessionState(prev => {
         const newState = prev ? { ...prev, videoId: data.videoId, playbackTime: 0, isPlaying: false } : null
         pendingStateRef.current = newState
@@ -265,6 +294,10 @@ export const useSessionState = ({
       socket.off(SocketEvents.USER_JOINED)
       socket.off(SocketEvents.USER_LEFT)
       socket.off(SocketEvents.SYNC)
+      // Clear timeout on cleanup
+      if (lastActionTimeoutRef.current) {
+        clearTimeout(lastActionTimeoutRef.current)
+      }
     }
   }, [socket, latency, playerRef])
 
