@@ -2,8 +2,8 @@ import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
 import { ClientToServerEvents, ServerToClientEvents, SocketEvents } from '@watchparty/shared'
-import { getAuthoritativeTime, getSessionState } from './session/state'
-import { registerSocketHandlers } from './handlers/socket-handlers'
+import { getAuthoritativeTime, getSessionState } from './session/state.js'
+import { registerSocketHandlers } from './handlers/socket-handlers.js'
 
 const app = express()
 

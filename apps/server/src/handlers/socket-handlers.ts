@@ -17,8 +17,8 @@ import {
   getSessionState,
   addUser,
   removeUser,
-} from '../session/state'
-import { setUser, getUser, deleteUser } from '../session/users'
+} from '../session/state.js'
+import { setUser, getUser, deleteUser } from '../session/users.js'
 
 type TypedSocket = Socket<ClientToServerEvents, ServerToClientEvents>
 type TypedServer = Server<ClientToServerEvents, ServerToClientEvents>
