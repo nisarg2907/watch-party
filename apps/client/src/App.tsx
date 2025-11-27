@@ -315,6 +315,9 @@ function App() {
     setHasJoined(true)
     hasJoinedRef.current = true
     
+    // Mark as handling remote event to prevent seek detection during initial sync
+    isHandlingRemoteEventRef.current = true
+    
     socket.emit('session:join', { username: trimmedUsername })
     
     // Immediately add self to local state
@@ -335,8 +338,11 @@ function App() {
       })
     }
     
-    // Mark as new joiner for aggressive sync
+    // Mark as new joiner for aggressive sync and clear remote event flag after sync
     isNewJoinerRef.current = true
+    setTimeout(() => {
+      isHandlingRemoteEventRef.current = false
+    }, 1000) // Give 1 second for initial sync to complete
   }, [socket, inputUsername])
 
   const handleVideoChange = useCallback(() => {
