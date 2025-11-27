@@ -195,7 +195,26 @@ function App() {
     setUsername(trimmedUsername)
     setHasJoined(true)
     
+    console.log('[CLIENT] Joining with username:', trimmedUsername)
     socket.emit('session:join', { username: trimmedUsername })
+    
+    // Immediately add self to local state
+    if (socket?.id) {
+      setSessionState(prev => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          users: {
+            ...prev.users,
+            [socket.id as string]: {
+              socketId: socket.id as string,
+              username: trimmedUsername,
+              joinedAt: Date.now()
+            }
+          }
+        }
+      })
+    }
     
     // If there's a pending state with a playing video, start it
     setTimeout(() => {
@@ -301,7 +320,15 @@ function App() {
     }
   }, [hasJoined])
 
-  const users = sessionState ? Object.values(sessionState.users) : []
+  // Always include current user in the list, merged with session users
+  const sessionUsers = sessionState ? Object.values(sessionState.users) : []
+  const currentUser = sessionState && socket?.id ? sessionState.users[socket.id] : null
+  
+  // If current user isn't in the session users list yet, add them
+  const users = currentUser || !hasJoined ? sessionUsers : [
+    ...sessionUsers.filter(u => u.socketId !== socket?.id),
+    { socketId: socket?.id || '', username, joinedAt: Date.now() }
+  ]
 
   // Join Screen
   if (!hasJoined) {
