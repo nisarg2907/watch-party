@@ -43,6 +43,8 @@ export const SocketEvents = {
   VIDEO_CHANGE: 'session:videoChange',
 } as const
 
+export type SocketEventName = typeof SocketEvents[keyof typeof SocketEvents]
+
 /**
  * Session state interface
  */
@@ -53,5 +55,70 @@ export interface SessionState {
   lastAction: string
   lastActionBy: string
   seq: number
+  lastUpdatedAt: number
+}
+
+/**
+ * Client -> Server event payloads
+ */
+export interface ClientToServerEvents {
+  'session:play': (data: PlayEventPayload) => void
+  'session:pause': (data: PauseEventPayload) => void
+  'session:seek': (data: SeekEventPayload) => void
+  'session:changeVideo': (data: ChangeVideoPayload) => void
+}
+
+/**
+ * Server -> Client event payloads
+ */
+export interface ServerToClientEvents {
+  'session:init': (data: SessionState) => void
+  'session:play': (data: PlayBroadcastPayload) => void
+  'session:pause': (data: PauseBroadcastPayload) => void
+  'session:seek': (data: SeekBroadcastPayload) => void
+  'session:videoChange': (data: VideoChangeBroadcastPayload) => void
+}
+
+/**
+ * Event payload types
+ */
+export interface PlayEventPayload {
+  time: number
+}
+
+export interface PauseEventPayload {
+  time: number
+}
+
+export interface SeekEventPayload {
+  time: number
+}
+
+export interface ChangeVideoPayload {
+  videoId: string
+}
+
+export interface PlayBroadcastPayload {
+  time: number
+  seq: number
+  lastUpdatedAt: number
+}
+
+export interface PauseBroadcastPayload {
+  time: number
+  seq: number
+  lastUpdatedAt: number
+}
+
+export interface SeekBroadcastPayload {
+  time: number
+  seq: number
+  lastUpdatedAt: number
+}
+
+export interface VideoChangeBroadcastPayload {
+  videoId: string
+  seq: number
+  lastUpdatedAt: number
 }
 

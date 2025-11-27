@@ -1,7 +1,16 @@
 import express from 'express'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
-import { extractVideoId } from '@watchparty/shared'
+import { 
+  extractVideoId, 
+  ClientToServerEvents, 
+  ServerToClientEvents,
+  SessionState,
+  PlayEventPayload,
+  PauseEventPayload,
+  SeekEventPayload,
+  ChangeVideoPayload
+} from '@watchparty/shared'
 
 const app = express()
 
@@ -22,7 +31,7 @@ app.use((req, _res, next) => {
 })
 
 const httpServer = createServer(app)
-const io = new Server(httpServer, {
+const io = new Server<ClientToServerEvents, ServerToClientEvents>(httpServer, {
   cors: {
     origin: true,
     methods: ['GET', 'POST'],
@@ -32,25 +41,7 @@ const io = new Server(httpServer, {
 const PORT = process.env.PORT || 4000
 
 // In-memory session state (single-instance server)
-interface SessionState {
-  videoId: string
-  /**
-   * Last authoritative playback time in seconds.
-   * This is updated whenever we receive a client event.
-   */
-  playbackTime: number
-  isPlaying: boolean
-  lastAction: string
-  lastActionBy: string
-  /**
-   * Monotonic sequence number for debugging / ordering.
-   */
-  seq: number
-  /**
-   * When this state was last updated on the server (ms since epoch).
-   */
-  lastUpdatedAt: number
-}
+// SessionState is now imported from @watchparty/shared
 
 let sessionState: SessionState = {
   videoId: '',
@@ -107,7 +98,7 @@ io.on('connection', (socket) => {
     playbackTime: getAuthoritativeTime(),
   })
 
-  socket.on('session:play', (data: { time: number }) => {
+  socket.on('session:play', (data: PlayEventPayload) => {
     const clientId = socket.id.substring(0, 8)
     console.log('[EVENT] play from', clientId, 'time=', data.time)
     // Use client's time as a hint, but state will re-derive from server clock
@@ -126,7 +117,7 @@ io.on('connection', (socket) => {
     })
   })
 
-  socket.on('session:pause', (data: { time: number }) => {
+  socket.on('session:pause', (data: PauseEventPayload) => {
     const clientId = socket.id.substring(0, 8)
     console.log('[EVENT] pause from', clientId, 'time=', data.time)
     updateSessionState({
@@ -144,7 +135,7 @@ io.on('connection', (socket) => {
     })
   })
 
-  socket.on('session:seek', (data: { time: number }) => {
+  socket.on('session:seek', (data: SeekEventPayload) => {
     const clientId = socket.id.substring(0, 8)
     console.log('[EVENT] seek from', clientId, 'time=', data.time)
     updateSessionState({
@@ -161,7 +152,7 @@ io.on('connection', (socket) => {
     })
   })
 
-  socket.on('session:changeVideo', (data: { videoId: string }) => {
+  socket.on('session:changeVideo', (data: ChangeVideoPayload) => {
     const videoId = extractVideoId(data.videoId) || data.videoId
     if (videoId) {
       const clientId = socket.id.substring(0, 8)

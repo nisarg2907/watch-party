@@ -1,7 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { io, Socket } from 'socket.io-client'
 import YouTube from 'react-youtube'
-import { extractVideoId, SessionState } from '@watchparty/shared'
+import { 
+  extractVideoId, 
+  SessionState,
+  PlayBroadcastPayload,
+  PauseBroadcastPayload,
+  SeekBroadcastPayload,
+  VideoChangeBroadcastPayload
+} from '@watchparty/shared'
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://192.168.1.12:4000'
 
@@ -14,6 +21,8 @@ function App() {
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const playerRef = useRef<YT.Player | null>(null)
   const lastSeqRef = useRef<number>(0)
+  const isHandlingRemoteEventRef = useRef<boolean>(false)
+  const pendingStateRef = useRef<SessionState | null>(null)
 
   useEffect(() => {
     const newSocket = io(SOCKET_URL)
@@ -30,27 +39,42 @@ function App() {
     })
 
     newSocket.on('session:init', (state: SessionState) => {
+      console.log('[CLIENT] session:init', state)
       // Initialize last seen sequence
       if (typeof state.seq === 'number') {
         lastSeqRef.current = state.seq
       }
       setSessionState(state)
+      pendingStateRef.current = state
+      
+      // Apply state to player if it's ready
       const player = playerRef.current
       if (state.videoId && player) {
-        if (state.isPlaying) {
-          player.playVideo()
-        } else {
-          player.pauseVideo()
-        }
+        isHandlingRemoteEventRef.current = true
         player.seekTo(state.playbackTime, true)
+        
+        // Use a timeout to ensure seek completes before play/pause
+        setTimeout(() => {
+          if (state.isPlaying) {
+            player.playVideo()
+          } else {
+            player.pauseVideo()
+          }
+          setTimeout(() => {
+            isHandlingRemoteEventRef.current = false
+          }, 100)
+        }, 100)
       }
     })
 
-    newSocket.on('session:play', (data: { time: number; seq: number }) => {
+    newSocket.on('session:play', (data: PlayBroadcastPayload) => {
       if (data.seq <= lastSeqRef.current) return
+      console.log('[CLIENT] session:play', data)
       lastSeqRef.current = data.seq
+      
       const player = playerRef.current
       if (player) {
+        isHandlingRemoteEventRef.current = true
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
         // Only snap if we're meaningfully off
@@ -58,43 +82,63 @@ function App() {
           player.seekTo(data.time, true)
         }
         player.playVideo()
+        setTimeout(() => {
+          isHandlingRemoteEventRef.current = false
+        }, 100)
       }
-      setSessionState(prev => (prev ? { ...prev, isPlaying: true } : null))
+      setSessionState(prev => (prev ? { ...prev, isPlaying: true, playbackTime: data.time } : null))
     })
 
-    newSocket.on('session:pause', (data: { time: number; seq: number }) => {
+    newSocket.on('session:pause', (data: PauseBroadcastPayload) => {
       if (data.seq <= lastSeqRef.current) return
+      console.log('[CLIENT] session:pause', data)
       lastSeqRef.current = data.seq
+      
       const player = playerRef.current
       if (player) {
+        isHandlingRemoteEventRef.current = true
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
         if (Math.abs(delta) > 0.3) {
           player.seekTo(data.time, true)
         }
         player.pauseVideo()
+        setTimeout(() => {
+          isHandlingRemoteEventRef.current = false
+        }, 100)
       }
-      setSessionState(prev => (prev ? { ...prev, isPlaying: false } : null))
+      setSessionState(prev => (prev ? { ...prev, isPlaying: false, playbackTime: data.time } : null))
     })
 
-    newSocket.on('session:seek', (data: { time: number; seq: number }) => {
+    newSocket.on('session:seek', (data: SeekBroadcastPayload) => {
       if (data.seq <= lastSeqRef.current) return
+      console.log('[CLIENT] session:seek', data)
       lastSeqRef.current = data.seq
+      
       const player = playerRef.current
       if (player) {
+        isHandlingRemoteEventRef.current = true
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
         if (Math.abs(delta) > 0.2) {
           player.seekTo(data.time, true)
         }
+        setTimeout(() => {
+          isHandlingRemoteEventRef.current = false
+        }, 100)
       }
       setSessionState(prev => (prev ? { ...prev, playbackTime: data.time } : null))
     })
 
-    newSocket.on('session:videoChange', (data: { videoId: string; seq: number }) => {
+    newSocket.on('session:videoChange', (data: VideoChangeBroadcastPayload) => {
       if (data.seq <= lastSeqRef.current) return
+      console.log('[CLIENT] session:videoChange', data)
       lastSeqRef.current = data.seq
-      setSessionState(prev => (prev ? { ...prev, videoId: data.videoId, playbackTime: 0 } : null))
+      setSessionState(prev => {
+        const newState = prev ? { ...prev, videoId: data.videoId, playbackTime: 0, isPlaying: false } : null
+        pendingStateRef.current = newState
+        return newState
+      })
     })
 
     return () => {
@@ -113,37 +157,66 @@ function App() {
     }
   }
 
-  const handlePlay = () => {
+  const handlePlay = useCallback(() => {
+    // Don't emit if we're handling a remote event
+    if (isHandlingRemoteEventRef.current) return
+    
     const player = playerRef.current
     if (socket && player) {
       const currentTime = player.getCurrentTime()
+      console.log('[CLIENT] emitting play', currentTime)
       socket.emit('session:play', { time: currentTime })
     }
-  }
+  }, [socket])
 
-  const handlePause = () => {
+  const handlePause = useCallback(() => {
+    // Don't emit if we're handling a remote event
+    if (isHandlingRemoteEventRef.current) return
+    
     const player = playerRef.current
     if (socket && player) {
       const currentTime = player.getCurrentTime()
+      console.log('[CLIENT] emitting pause', currentTime)
       socket.emit('session:pause', { time: currentTime })
     }
-  }
+  }, [socket])
 
-  const handleSeek = (event: YT.PlayerEvent) => {
+  const handleSeek = useCallback((event: YT.PlayerEvent) => {
+    // Don't emit if we're handling a remote event
+    if (isHandlingRemoteEventRef.current) return
+    
     if (socket) {
+      console.log('[CLIENT] emitting seek', event.data)
       socket.emit('session:seek', { time: event.data })
     }
-  }
+  }, [socket])
 
-  const onReady = (event: { target: YT.Player }) => {
+  const onReady = useCallback((event: { target: YT.Player }) => {
+    console.log('[CLIENT] player ready')
     playerRef.current = event.target
-    if (sessionState) {
-      event.target.seekTo(sessionState.playbackTime, true)
-      if (sessionState.isPlaying) {
-        event.target.playVideo()
-      }
+    
+    // Apply pending state when player becomes ready
+    const state = pendingStateRef.current
+    if (state && state.videoId) {
+      isHandlingRemoteEventRef.current = true
+      console.log('[CLIENT] applying pending state', state)
+      
+      event.target.seekTo(state.playbackTime, true)
+      
+      // Use a timeout to ensure seek completes before play/pause
+      setTimeout(() => {
+        if (state.isPlaying) {
+          console.log('[CLIENT] autoplay from pending state')
+          event.target.playVideo()
+        } else {
+          event.target.pauseVideo()
+        }
+        setTimeout(() => {
+          isHandlingRemoteEventRef.current = false
+        }, 100)
+      }, 100)
     }
-  }
+  }, [])
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
@@ -255,6 +328,8 @@ function App() {
                   height: '100%',
                   playerVars: {
                     autoplay: 0,
+                    controls: 1,
+                    modestbranding: 1,
                   },
                 }}
                 onReady={onReady}
