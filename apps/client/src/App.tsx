@@ -8,6 +8,8 @@ import {
   PauseBroadcastPayload,
   SeekBroadcastPayload,
   VideoChangeBroadcastPayload,
+  PlaybackRateBroadcastPayload,
+  QualityBroadcastPayload,
   UserJoinedPayload,
   UserLeftPayload,
   SyncPayload
@@ -45,6 +47,8 @@ function App() {
   const mySocketIdRef = useRef<string | null>(null) // Track own socket ID
   const initializationCompleteRef = useRef<boolean>(false) // Track if initial session:init was processed
   const lastSeekEmitRef = useRef<number>(0) // Track last seek emission for throttling
+  const lastPlaybackRateRef = useRef<number>(1) // Track last playback rate
+  const lastQualityRef = useRef<string>('auto') // Track last quality setting
 
   // Socket setup
   useEffect(() => {
@@ -112,6 +116,12 @@ function App() {
         
         player.seekTo(compensatedTime, true)
         lastKnownTimeRef.current = compensatedTime
+        
+        // Set playback rate
+        if (state.playbackRate) {
+          (player as YT.Player & { setPlaybackRate: (rate: number) => void }).setPlaybackRate(state.playbackRate)
+          lastPlaybackRateRef.current = state.playbackRate
+        }
         
         // Immediately set play state with no delay
         if (state.isPlaying) {
@@ -271,6 +281,51 @@ function App() {
       })
     })
 
+    newSocket.on('session:playbackRateChange', (data: PlaybackRateBroadcastPayload) => {
+      if (data.seq <= lastSeqRef.current) return
+      lastSeqRef.current = data.seq
+      
+      const isFromMe = socket?.id === mySocketIdRef.current
+      if (!isFromMe) {
+        setLastAction({ action: 'changed playback speed', username: data.username })
+      }
+      
+      const player = playerRef.current
+      if (player && hasJoinedRef.current) {
+        isHandlingRemoteEventRef.current = true
+        ;(player as YT.Player & { setPlaybackRate: (rate: number) => void }).setPlaybackRate(data.rate)
+        lastPlaybackRateRef.current = data.rate
+        
+        setTimeout(() => {
+          isHandlingRemoteEventRef.current = false
+        }, 100)
+      }
+      setSessionState(prev => (prev ? { ...prev, playbackRate: data.rate } : null))
+    })
+
+    newSocket.on('session:qualityChange', (data: QualityBroadcastPayload) => {
+      if (data.seq <= lastSeqRef.current) return
+      lastSeqRef.current = data.seq
+      
+      const isFromMe = socket?.id === mySocketIdRef.current
+      if (!isFromMe) {
+        setLastAction({ action: 'changed video quality', username: data.username })
+      }
+      
+      const player = playerRef.current
+      if (player && hasJoinedRef.current) {
+        isHandlingRemoteEventRef.current = true
+        // Note: YouTube API doesn't directly support quality change via API
+        // Quality changes are only possible through player controls
+        lastQualityRef.current = data.quality
+        
+        setTimeout(() => {
+          isHandlingRemoteEventRef.current = false
+        }, 100)
+      }
+      setSessionState(prev => (prev ? { ...prev, quality: data.quality } : null))
+    })
+
     // Periodic sync correction - smooth playback rate adjustment
     newSocket.on('session:sync', (data: SyncPayload) => {
       const player = playerRef.current
@@ -304,6 +359,7 @@ function App() {
     return () => {
       newSocket.close()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Join handler
@@ -376,7 +432,7 @@ function App() {
     }
   }, [socket])
 
-  // Seek detection
+  // Seek and playback rate detection
   useEffect(() => {
     if (!playerRef.current || !socket || !hasJoined) return
 
@@ -406,6 +462,13 @@ function App() {
         }
       }
       
+      // Detect playback rate changes
+      const currentRate = (player as YT.Player & { getPlaybackRate: () => number }).getPlaybackRate()
+      if (currentRate !== lastPlaybackRateRef.current) {
+        lastPlaybackRateRef.current = currentRate
+        socket.emit('session:playbackRate', { rate: currentRate })
+      }
+      
       lastKnownTimeRef.current = currentTime
     }, 500)
 
@@ -429,6 +492,12 @@ function App() {
       const compensatedTime = state.playbackTime + (latencyRef.current / 2000)
       event.target.seekTo(compensatedTime, true)
       lastKnownTimeRef.current = compensatedTime
+      
+      // Set playback rate
+      if (state.playbackRate) {
+        (event.target as YT.Player & { setPlaybackRate: (rate: number) => void }).setPlaybackRate(state.playbackRate)
+        lastPlaybackRateRef.current = state.playbackRate
+      }
       
       // No delay - apply state immediately
       if (state.isPlaying) {
@@ -460,7 +529,7 @@ function App() {
         isHandlingRemoteEventRef.current = false
       }, 100)
     }
-  }, [hasJoined])
+  }, [socket])
 
   // Always include current user in the list, merged with session users
   const sessionUsers = sessionState ? Object.values(sessionState.users) : []

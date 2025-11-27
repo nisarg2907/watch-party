@@ -11,7 +11,9 @@ import {
   PlayEventPayload,
   PauseEventPayload,
   SeekEventPayload,
-  ChangeVideoPayload
+  ChangeVideoPayload,
+  PlaybackRatePayload,
+  QualityPayload
 } from '@watchparty/shared'
 
 const app = express()
@@ -64,6 +66,8 @@ let sessionState: SessionState = {
   videoId: '',
   playbackTime: 0,
   isPlaying: false,
+  playbackRate: 1,
+  quality: 'auto',
   lastAction: 'init',
   lastActionBy: 'system',
   lastActionByUsername: 'System',
@@ -248,6 +252,52 @@ io.on('connection', (socket) => {
     console.log('[BROADCAST] videoChange videoId=', videoId, 'seq=', sessionState.seq)
     io.emit('session:videoChange', {
       videoId,
+      seq: sessionState.seq,
+      lastUpdatedAt: sessionState.lastUpdatedAt,
+      username,
+    })
+  })
+
+  socket.on('session:playbackRate', (data: PlaybackRatePayload) => {
+    const username = userMap.get(socket.id) || 'Unknown'
+    const clientId = socket.id.substring(0, 8)
+    console.log('[EVENT] playbackRate from', username, clientId, 'rate=', data.rate)
+    
+    // Validate playback rate (YouTube supports 0.25 to 2.0)
+    if (data.rate < 0.25 || data.rate > 2.0) {
+      console.warn('[EVENT] Invalid playback rate rejected:', data.rate)
+      return
+    }
+    
+    updateSessionState({
+      playbackRate: data.rate,
+      lastAction: 'playbackRate',
+      lastActionBy: clientId,
+      lastActionByUsername: username,
+    })
+    console.log('[BROADCAST] playbackRate rate=', data.rate, 'seq=', sessionState.seq)
+    io.emit('session:playbackRateChange', {
+      rate: data.rate,
+      seq: sessionState.seq,
+      lastUpdatedAt: sessionState.lastUpdatedAt,
+      username,
+    })
+  })
+
+  socket.on('session:quality', (data: QualityPayload) => {
+    const username = userMap.get(socket.id) || 'Unknown'
+    const clientId = socket.id.substring(0, 8)
+    console.log('[EVENT] quality from', username, clientId, 'quality=', data.quality)
+    
+    updateSessionState({
+      quality: data.quality,
+      lastAction: 'quality',
+      lastActionBy: clientId,
+      lastActionByUsername: username,
+    })
+    console.log('[BROADCAST] quality quality=', data.quality, 'seq=', sessionState.seq)
+    io.emit('session:qualityChange', {
+      quality: data.quality,
       seq: sessionState.seq,
       lastUpdatedAt: sessionState.lastUpdatedAt,
       username,

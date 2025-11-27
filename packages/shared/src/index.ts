@@ -35,6 +35,8 @@ export const SocketEvents = {
   PAUSE: 'session:pause',
   SEEK: 'session:seek',
   CHANGE_VIDEO: 'session:changeVideo',
+  PLAYBACK_RATE: 'session:playbackRate',
+  QUALITY: 'session:quality',
   
   // Server -> Client
   INIT: 'session:init',
@@ -42,6 +44,8 @@ export const SocketEvents = {
   PAUSE_BROADCAST: 'session:pause',
   SEEK_BROADCAST: 'session:seek',
   VIDEO_CHANGE: 'session:videoChange',
+  PLAYBACK_RATE_CHANGE: 'session:playbackRateChange',
+  QUALITY_CHANGE: 'session:qualityChange',
   USER_JOINED: 'session:userJoined',
   USER_LEFT: 'session:userLeft',
   SYNC: 'session:sync',
@@ -65,6 +69,8 @@ export interface SessionState {
   videoId: string
   playbackTime: number
   isPlaying: boolean
+  playbackRate: number
+  quality: string
   lastAction: string
   lastActionBy: string
   lastActionByUsername: string
@@ -82,6 +88,8 @@ export interface ClientToServerEvents {
   'session:pause': (data: PauseEventPayload) => void
   'session:seek': (data: SeekEventPayload) => void
   'session:changeVideo': (data: ChangeVideoPayload) => void
+  'session:playbackRate': (data: PlaybackRatePayload) => void
+  'session:quality': (data: QualityPayload) => void
   'ping': () => void
 }
 
@@ -94,6 +102,8 @@ export interface ServerToClientEvents {
   'session:pause': (data: PauseBroadcastPayload) => void
   'session:seek': (data: SeekBroadcastPayload) => void
   'session:videoChange': (data: VideoChangeBroadcastPayload) => void
+  'session:playbackRateChange': (data: PlaybackRateBroadcastPayload) => void
+  'session:qualityChange': (data: QualityBroadcastPayload) => void
   'session:userJoined': (data: UserJoinedPayload) => void
   'session:userLeft': (data: UserLeftPayload) => void
   'session:sync': (data: SyncPayload) => void
@@ -123,6 +133,14 @@ export interface ChangeVideoPayload {
   videoId: string
 }
 
+export interface PlaybackRatePayload {
+  rate: number
+}
+
+export interface QualityPayload {
+  quality: string
+}
+
 export interface PlayBroadcastPayload {
   time: number
   seq: number
@@ -146,6 +164,20 @@ export interface SeekBroadcastPayload {
 
 export interface VideoChangeBroadcastPayload {
   videoId: string
+  seq: number
+  lastUpdatedAt: number
+  username: string
+}
+
+export interface PlaybackRateBroadcastPayload {
+  rate: number
+  seq: number
+  lastUpdatedAt: number
+  username: string
+}
+
+export interface QualityBroadcastPayload {
+  quality: string
   seq: number
   lastUpdatedAt: number
   username: string
