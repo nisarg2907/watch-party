@@ -30,6 +30,7 @@ function App() {
   const [videoUrl, setVideoUrl] = useState('')
   const [isSettingVideo, setIsSettingVideo] = useState(false)
   const [lastAction, setLastAction] = useState<{ action: string; username: string } | null>(null)
+  const [syncStatus, setSyncStatus] = useState<{ delta: number; timestamp: number } | null>(null)
   
   // Player Refs
   const playerRef = useRef<YT.Player | null>(null)
@@ -127,6 +128,10 @@ function App() {
         
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
+        }, 300)
+        
+        // Clear expected state later to allow sync but prevent duplicate events
+        setTimeout(() => {
           expectedPlayerStateRef.current = null
         }, 500)
       }
@@ -156,6 +161,10 @@ function App() {
         
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
+        }, 300)
+        
+        // Clear expected state later to allow sync but prevent duplicate events
+        setTimeout(() => {
           expectedPlayerStateRef.current = null
         }, 500)
       }
@@ -223,30 +232,34 @@ function App() {
     // Periodic sync correction - more aggressive for tighter sync
     newSocket.on('session:sync', (data: SyncPayload) => {
       const player = playerRef.current
-      if (!player || !hasJoinedRef.current || isHandlingRemoteEventRef.current) return
+      if (!player || !hasJoinedRef.current) return
+      
+      // Don't interrupt user-initiated actions, but allow sync during remote event handling
+      if (isHandlingRemoteEventRef.current && expectedPlayerStateRef.current !== null) return
       
       const localTime = player.getCurrentTime()
-      const delta = data.time - localTime
+      // Compensate for network latency
+      const compensatedServerTime = data.time + (latencyRef.current / 2000)
+      const delta = compensatedServerTime - localTime
       
-      // More aggressive sync for new joiners, looser for established viewers
-      const threshold = isNewJoinerRef.current ? 0.2 : 0.5
+      // Tighter thresholds for better sync
+      const threshold = isNewJoinerRef.current ? 0.15 : 0.3
       const maxDelta = 3 // Allow larger corrections
+      
+      // Update sync status for debugging
+      setSyncStatus({ delta, timestamp: Date.now() })
       
       if (Math.abs(delta) > threshold && Math.abs(delta) < maxDelta) {
         console.log('[CLIENT] sync correction', { 
           local: localTime, 
-          server: data.time, 
+          server: data.time,
+          compensated: compensatedServerTime,
           delta, 
           isNewJoiner: isNewJoinerRef.current 
         })
         
-        isHandlingRemoteEventRef.current = true
-        player.seekTo(data.time, true)
-        lastKnownTimeRef.current = data.time
-        
-        setTimeout(() => {
-          isHandlingRemoteEventRef.current = false
-        }, 100)
+        player.seekTo(compensatedServerTime, true)
+        lastKnownTimeRef.current = compensatedServerTime
       }
     })
 
@@ -541,12 +554,22 @@ function App() {
             )}
           </section>
 
-          {/* Last Action */}
-          {lastAction && (
-            <div className="text-xs text-slate-400 text-center py-1">
-              <span className="font-medium text-emerald-400">{lastAction.username}</span> {lastAction.action}
-            </div>
-          )}
+          {/* Sync Status & Last Action */}
+          <div className="flex items-center justify-center gap-4 text-xs text-slate-400 py-1">
+            {lastAction && (
+              <div>
+                <span className="font-medium text-emerald-400">{lastAction.username}</span> {lastAction.action}
+              </div>
+            )}
+            {syncStatus && (
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500">Sync:</span>
+                <span className={Math.abs(syncStatus.delta) > 0.3 ? 'text-orange-400' : 'text-emerald-400'}>
+                  {syncStatus.delta > 0 ? '+' : ''}{syncStatus.delta.toFixed(2)}s
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sidebar */}
