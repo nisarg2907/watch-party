@@ -48,6 +48,18 @@ const PORT = process.env.PORT || 4000
 // Store socket ID -> username mapping
 const userMap = new Map<string, string>()
 
+// Periodic sync heartbeat - broadcasts current time every 3 seconds
+setInterval(() => {
+  if (sessionState.isPlaying && sessionState.videoId) {
+    const currentTime = getAuthoritativeTime()
+    io.emit('session:sync', {
+      time: currentTime,
+      seq: sessionState.seq,
+      lastUpdatedAt: sessionState.lastUpdatedAt,
+    })
+  }
+}, 3000)
+
 let sessionState: SessionState = {
   videoId: '',
   playbackTime: 0,

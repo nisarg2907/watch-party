@@ -9,7 +9,8 @@ import {
   SeekBroadcastPayload,
   VideoChangeBroadcastPayload,
   UserJoinedPayload,
-  UserLeftPayload
+  UserLeftPayload,
+  SyncPayload
 } from '@watchparty/shared'
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://192.168.1.12:4000'
@@ -181,6 +182,28 @@ function App() {
           users: newUsers
         }
       })
+    })
+
+    // Periodic sync correction
+    newSocket.on('session:sync', (data: SyncPayload) => {
+      const player = playerRef.current
+      if (!player || !hasJoinedRef.current || isHandlingRemoteEventRef.current) return
+      
+      const localTime = player.getCurrentTime()
+      const delta = data.time - localTime
+      
+      // Only correct if drift is significant (>500ms) but not too large (>2s means likely user action)
+      if (Math.abs(delta) > 0.5 && Math.abs(delta) < 2) {
+        console.log('[CLIENT] sync correction', { local: localTime, server: data.time, delta })
+        
+        // Smooth correction: seek to server time
+        isHandlingRemoteEventRef.current = true
+        player.seekTo(data.time, true)
+        
+        setTimeout(() => {
+          isHandlingRemoteEventRef.current = false
+        }, 200)
+      }
     })
 
     return () => {

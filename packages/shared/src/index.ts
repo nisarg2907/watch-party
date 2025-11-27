@@ -44,6 +44,7 @@ export const SocketEvents = {
   VIDEO_CHANGE: 'session:videoChange',
   USER_JOINED: 'session:userJoined',
   USER_LEFT: 'session:userLeft',
+  SYNC: 'session:sync',
 } as const
 
 export type SocketEventName = typeof SocketEvents[keyof typeof SocketEvents]
@@ -94,6 +95,7 @@ export interface ServerToClientEvents {
   'session:videoChange': (data: VideoChangeBroadcastPayload) => void
   'session:userJoined': (data: UserJoinedPayload) => void
   'session:userLeft': (data: UserLeftPayload) => void
+  'session:sync': (data: SyncPayload) => void
 }
 
 /**
@@ -154,5 +156,11 @@ export interface UserJoinedPayload {
 export interface UserLeftPayload {
   socketId: string
   username: string
+}
+
+export interface SyncPayload {
+  time: number
+  seq: number
+  lastUpdatedAt: number
 }
 
