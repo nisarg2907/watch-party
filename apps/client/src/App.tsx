@@ -40,6 +40,7 @@ function App() {
   const seekCheckIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const latencyRef = useRef<number>(0) // Track network latency
   const isNewJoinerRef = useRef<boolean>(false) // Track if this is a fresh join
+  const expectedPlayerStateRef = useRef<'playing' | 'paused' | null>(null) // Track expected state
 
   // Socket setup
   useEffect(() => {
@@ -112,6 +113,8 @@ function App() {
       const player = playerRef.current
       if (player && hasJoinedRef.current) {
         isHandlingRemoteEventRef.current = true
+        expectedPlayerStateRef.current = 'playing'
+        
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
         
@@ -124,7 +127,8 @@ function App() {
         
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
-        }, 100)
+          expectedPlayerStateRef.current = null
+        }, 500)
       }
       setSessionState(prev => (prev ? { ...prev, isPlaying: true, playbackTime: data.time } : null))
     })
@@ -138,6 +142,8 @@ function App() {
       const player = playerRef.current
       if (player && hasJoinedRef.current) {
         isHandlingRemoteEventRef.current = true
+        expectedPlayerStateRef.current = 'paused'
+        
         const localTime = player.getCurrentTime()
         const delta = data.time - localTime
         
@@ -150,7 +156,8 @@ function App() {
         
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
-        }, 100)
+          expectedPlayerStateRef.current = null
+        }, 500)
       }
       setSessionState(prev => (prev ? { ...prev, isPlaying: false, playbackTime: data.time } : null))
     })
@@ -501,6 +508,16 @@ function App() {
                   onStateChange={(event: YT.PlayerEvent) => {
                     if (isHandlingRemoteEventRef.current) {
                       console.log('[CLIENT] ignoring state change during remote event', event.data)
+                      return
+                    }
+                    
+                    // Check if this state change matches our expected state (from remote)
+                    if (event.data === 1 && expectedPlayerStateRef.current === 'playing') {
+                      console.log('[CLIENT] ignoring expected play state from remote')
+                      return
+                    }
+                    if (event.data === 2 && expectedPlayerStateRef.current === 'paused') {
+                      console.log('[CLIENT] ignoring expected pause state from remote')
                       return
                     }
                     
