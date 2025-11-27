@@ -30,6 +30,7 @@ export function extractVideoId(url: string): string | null {
  */
 export const SocketEvents = {
   // Client -> Server
+  JOIN: 'session:join',
   PLAY: 'session:play',
   PAUSE: 'session:pause',
   SEEK: 'session:seek',
@@ -41,9 +42,20 @@ export const SocketEvents = {
   PAUSE_BROADCAST: 'session:pause',
   SEEK_BROADCAST: 'session:seek',
   VIDEO_CHANGE: 'session:videoChange',
+  USER_JOINED: 'session:userJoined',
+  USER_LEFT: 'session:userLeft',
 } as const
 
 export type SocketEventName = typeof SocketEvents[keyof typeof SocketEvents]
+
+/**
+ * User in the session
+ */
+export interface User {
+  socketId: string
+  username: string
+  joinedAt: number
+}
 
 /**
  * Session state interface
@@ -54,14 +66,17 @@ export interface SessionState {
   isPlaying: boolean
   lastAction: string
   lastActionBy: string
+  lastActionByUsername: string
   seq: number
   lastUpdatedAt: number
+  users: Record<string, User>
 }
 
 /**
  * Client -> Server event payloads
  */
 export interface ClientToServerEvents {
+  'session:join': (data: JoinEventPayload) => void
   'session:play': (data: PlayEventPayload) => void
   'session:pause': (data: PauseEventPayload) => void
   'session:seek': (data: SeekEventPayload) => void
@@ -77,11 +92,17 @@ export interface ServerToClientEvents {
   'session:pause': (data: PauseBroadcastPayload) => void
   'session:seek': (data: SeekBroadcastPayload) => void
   'session:videoChange': (data: VideoChangeBroadcastPayload) => void
+  'session:userJoined': (data: UserJoinedPayload) => void
+  'session:userLeft': (data: UserLeftPayload) => void
 }
 
 /**
  * Event payload types
  */
+export interface JoinEventPayload {
+  username: string
+}
+
 export interface PlayEventPayload {
   time: number
 }
@@ -102,23 +123,36 @@ export interface PlayBroadcastPayload {
   time: number
   seq: number
   lastUpdatedAt: number
+  username: string
 }
 
 export interface PauseBroadcastPayload {
   time: number
   seq: number
   lastUpdatedAt: number
+  username: string
 }
 
 export interface SeekBroadcastPayload {
   time: number
   seq: number
   lastUpdatedAt: number
+  username: string
 }
 
 export interface VideoChangeBroadcastPayload {
   videoId: string
   seq: number
   lastUpdatedAt: number
+  username: string
+}
+
+export interface UserJoinedPayload {
+  user: User
+}
+
+export interface UserLeftPayload {
+  socketId: string
+  username: string
 }
 
