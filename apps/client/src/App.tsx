@@ -23,6 +23,8 @@ function App() {
   const lastSeqRef = useRef<number>(0)
   const isHandlingRemoteEventRef = useRef<boolean>(false)
   const pendingStateRef = useRef<SessionState | null>(null)
+  const lastKnownTimeRef = useRef<number>(0)
+  const seekCheckIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const newSocket = io(SOCKET_URL)
@@ -62,8 +64,8 @@ function App() {
           }
           setTimeout(() => {
             isHandlingRemoteEventRef.current = false
-          }, 100)
-        }, 100)
+          }, 200)
+        }, 200)
       }
     })
 
@@ -84,7 +86,7 @@ function App() {
         player.playVideo()
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
-        }, 100)
+        }, 300)
       }
       setSessionState(prev => (prev ? { ...prev, isPlaying: true, playbackTime: data.time } : null))
     })
@@ -105,7 +107,7 @@ function App() {
         player.pauseVideo()
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
-        }, 100)
+        }, 300)
       }
       setSessionState(prev => (prev ? { ...prev, isPlaying: false, playbackTime: data.time } : null))
     })
@@ -125,7 +127,7 @@ function App() {
         }
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
-        }, 100)
+        }, 300)
       }
       setSessionState(prev => (prev ? { ...prev, playbackTime: data.time } : null))
     })
@@ -181,13 +183,32 @@ function App() {
     }
   }, [socket])
 
-  const handleSeek = useCallback((event: YT.PlayerEvent) => {
-    // Don't emit if we're handling a remote event
-    if (isHandlingRemoteEventRef.current) return
-    
-    if (socket) {
-      console.log('[CLIENT] emitting seek', event.data)
-      socket.emit('session:seek', { time: event.data })
+  // Check for seeks by monitoring time changes
+  useEffect(() => {
+    if (!playerRef.current || !socket) return
+
+    const checkInterval = setInterval(() => {
+      const player = playerRef.current
+      if (!player || isHandlingRemoteEventRef.current) return
+
+      const currentTime = player.getCurrentTime()
+      const timeDiff = Math.abs(currentTime - lastKnownTimeRef.current)
+      
+      // If time jumped more than 1.5 seconds (not normal playback), it's a seek
+      if (timeDiff > 1.5 && lastKnownTimeRef.current > 0) {
+        console.log('[CLIENT] detected seek', { from: lastKnownTimeRef.current, to: currentTime })
+        socket.emit('session:seek', { time: currentTime })
+      }
+      
+      lastKnownTimeRef.current = currentTime
+    }, 500)
+
+    seekCheckIntervalRef.current = checkInterval
+
+    return () => {
+      if (seekCheckIntervalRef.current) {
+        clearInterval(seekCheckIntervalRef.current)
+      }
     }
   }, [socket])
 
@@ -202,19 +223,25 @@ function App() {
       console.log('[CLIENT] applying pending state', state)
       
       event.target.seekTo(state.playbackTime, true)
+      lastKnownTimeRef.current = state.playbackTime
       
-      // Use a timeout to ensure seek completes before play/pause
+      // Use a longer timeout to ensure seek completes before play/pause
       setTimeout(() => {
         if (state.isPlaying) {
           console.log('[CLIENT] autoplay from pending state')
-          event.target.playVideo()
+          try {
+            event.target.playVideo()
+            console.log('[CLIENT] autoplay requested')
+          } catch (err) {
+            console.error('[CLIENT] autoplay failed:', err)
+          }
         } else {
           event.target.pauseVideo()
         }
         setTimeout(() => {
           isHandlingRemoteEventRef.current = false
-        }, 100)
-      }, 100)
+        }, 300)
+      }, 300)
     }
   }, [])
 
@@ -330,18 +357,27 @@ function App() {
                     autoplay: 0,
                     controls: 1,
                     modestbranding: 1,
+                    rel: 0,
+                    fs: 1,
                   },
                 }}
                 onReady={onReady}
                 onStateChange={(event: YT.PlayerEvent) => {
+                  // Don't handle state changes if we're applying remote events
+                  if (isHandlingRemoteEventRef.current) {
+                    console.log('[CLIENT] ignoring state change during remote event', event.data)
+                    return
+                  }
+                  
                   // 1 = PLAYING, 2 = PAUSED (YouTube IFrame API)
                   if (event.data === 1) {
+                    console.log('[CLIENT] user played video')
                     handlePlay()
                   } else if (event.data === 2) {
+                    console.log('[CLIENT] user paused video')
                     handlePause()
                   }
                 }}
-                onSeek={handleSeek}
               />
             </div>
           ) : (
