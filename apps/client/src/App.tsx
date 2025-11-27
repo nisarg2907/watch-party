@@ -38,6 +38,8 @@ function App() {
   const pendingStateRef = useRef<SessionState | null>(null)
   const lastKnownTimeRef = useRef<number>(0)
   const seekCheckIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const playDelayTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const seekDelayTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Socket setup
   useEffect(() => {
@@ -269,9 +271,17 @@ function App() {
     
     const player = playerRef.current
     if (socket && player) {
-      const currentTime = player.getCurrentTime()
-      console.log('[CLIENT] emitting play', currentTime)
-      socket.emit('session:play', { time: currentTime })
+      // Clear any existing timer
+      if (playDelayTimerRef.current) {
+        clearTimeout(playDelayTimerRef.current)
+      }
+      
+      // Add a small delay (150ms) before emitting play to give user smoother experience
+      playDelayTimerRef.current = setTimeout(() => {
+        const currentTime = player.getCurrentTime()
+        console.log('[CLIENT] emitting play', currentTime)
+        socket.emit('session:play', { time: currentTime })
+      }, 150)
     }
   }, [socket])
 
@@ -299,7 +309,16 @@ function App() {
       
       if (timeDiff > 1.5 && lastKnownTimeRef.current > 0) {
         console.log('[CLIENT] detected seek', { from: lastKnownTimeRef.current, to: currentTime })
-        socket.emit('session:seek', { time: currentTime })
+        
+        // Clear any existing seek delay timer
+        if (seekDelayTimerRef.current) {
+          clearTimeout(seekDelayTimerRef.current)
+        }
+        
+        // Add 400ms delay before emitting seek to allow user to find the right position
+        seekDelayTimerRef.current = setTimeout(() => {
+          socket.emit('session:seek', { time: currentTime })
+        }, 400)
       }
       
       lastKnownTimeRef.current = currentTime
@@ -310,6 +329,12 @@ function App() {
     return () => {
       if (seekCheckIntervalRef.current) {
         clearInterval(seekCheckIntervalRef.current)
+      }
+      if (seekDelayTimerRef.current) {
+        clearTimeout(seekDelayTimerRef.current)
+      }
+      if (playDelayTimerRef.current) {
+        clearTimeout(playDelayTimerRef.current)
       }
     }
   }, [socket, hasJoined])
@@ -406,17 +431,17 @@ function App() {
   // Main Watch Party UI
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
-      <main className="mx-auto flex min-h-screen w-full max-w-7xl gap-6 p-4 lg:p-6">
+      <main className="mx-auto flex flex-col lg:flex-row min-h-screen w-full max-w-7xl gap-4 lg:gap-6 p-4 lg:p-6">
         {/* Main Content */}
-        <div className="flex-1 flex flex-col gap-4">
+        <div className="flex-1 flex flex-col gap-3 lg:gap-4 min-w-0">
           {/* Header */}
-          <header className="flex items-center justify-between">
+          <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">Watch Party</h1>
-              <p className="text-sm text-slate-400 mt-1">Synced viewing experience</p>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Watch Party</h1>
+              <p className="text-xs sm:text-sm text-slate-400 mt-0.5 sm:mt-1">Synced viewing experience</p>
             </div>
             <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex items-center gap-2 text-xs sm:text-sm">
                 <span className={`inline-flex h-2 w-2 rounded-full ${connectionStatus === 'connected' ? 'bg-emerald-400' : 'bg-red-400'}`} />
                 <span className="text-slate-300">{username}</span>
               </div>
@@ -424,25 +449,25 @@ function App() {
           </header>
 
           {/* Video Input */}
-          <section className="flex gap-3">
+          <section className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <input
               type="text"
               value={videoUrl}
               onChange={(e) => setVideoUrl(e.target.value)}
               placeholder="Paste YouTube URL..."
-              className="flex-1 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm outline-none ring-0 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/40"
+              className="flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 sm:px-4 py-2 sm:py-2.5 text-sm text-slate-50 placeholder:text-slate-500 shadow-sm outline-none ring-0 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/40"
             />
             <button
               onClick={handleVideoChange}
               disabled={!videoUrl || !socket || connectionStatus !== 'connected' || isSettingVideo}
-              className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-6 py-2.5 text-sm font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              className="inline-flex items-center justify-center rounded-lg bg-emerald-500 px-4 sm:px-6 py-2 sm:py-2.5 text-sm font-medium text-emerald-950 shadow-sm transition hover:bg-emerald-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 whitespace-nowrap"
             >
               {isSettingVideo ? 'Setting...' : 'Set Video'}
             </button>
           </section>
 
           {/* Video Player */}
-          <section className="flex-1 rounded-xl border border-slate-800 bg-slate-900/40 p-3 shadow-sm">
+          <section className="flex-1 rounded-xl border border-slate-800 bg-slate-900/40 p-2 sm:p-3 shadow-sm">
             {sessionState?.videoId ? (
               <div className="aspect-video w-full overflow-hidden rounded-lg border border-slate-800 bg-black">
                 <YouTube
@@ -477,41 +502,41 @@ function App() {
                 />
               </div>
             ) : (
-              <div className="flex h-full min-h-[400px] flex-col items-center justify-center gap-3 text-center text-slate-400">
+              <div className="flex h-full min-h-[300px] sm:min-h-[400px] flex-col items-center justify-center gap-3 text-center text-slate-400 px-4">
                 <div className="inline-flex h-12 w-12 items-center justify-center rounded-full border border-dashed border-slate-700 bg-slate-900/60">
                   <span className="text-2xl">▶️</span>
                 </div>
-                <p className="text-sm">Paste a YouTube link above to start watching together</p>
+                <p className="text-xs sm:text-sm">Paste a YouTube link above to start watching together</p>
               </div>
             )}
           </section>
 
           {/* Last Action */}
           {lastAction && (
-            <div className="text-xs text-slate-400 text-center">
+            <div className="text-xs text-slate-400 text-center py-1">
               <span className="font-medium text-emerald-400">{lastAction.username}</span> {lastAction.action}
             </div>
           )}
         </div>
 
         {/* Sidebar */}
-        <aside className="w-80 flex flex-col gap-4">
+        <aside className="w-full lg:w-80 flex flex-col gap-3 lg:gap-4">
           {/* Participants */}
-          <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-200 mb-3">
+          <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 sm:p-4 shadow-sm">
+            <h2 className="text-xs sm:text-sm font-semibold text-slate-200 mb-2 sm:mb-3">
               Participants ({users.length})
             </h2>
-            <div className="space-y-2">
+            <div className="space-y-2 max-h-[200px] lg:max-h-none overflow-y-auto">
               {users.length === 0 ? (
-                <p className="text-xs text-slate-500 text-center py-4">Waiting for others to join...</p>
+                <p className="text-xs text-slate-500 text-center py-3 sm:py-4">Waiting for others to join...</p>
               ) : (
                 users.map((user) => (
                   <div
                     key={user.socketId}
-                    className="flex items-center gap-2 rounded-lg bg-slate-900/60 px-3 py-2"
+                    className="flex items-center gap-2 rounded-lg bg-slate-900/60 px-2.5 sm:px-3 py-1.5 sm:py-2"
                   >
-                    <div className="h-2 w-2 rounded-full bg-emerald-400" />
-                    <span className="text-sm text-slate-200">{user.username}</span>
+                    <div className="h-2 w-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm text-slate-200 truncate">{user.username}</span>
                   </div>
                 ))
               )}
