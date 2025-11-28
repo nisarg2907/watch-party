@@ -89,6 +89,27 @@ watch-party-monorepo/
 - **Smart seek detection** - ignores buffering/stuttering to prevent false positives (2.0s threshold)
 - **Error handling** - YouTube player errors are logged and state is synced back to server
 
+## Documentation
+
+For detailed technical documentation, see **[Documentation.md](./Documentation.md)**:
+- System architecture and component design
+- Key technical decisions and trade-offs
+- Synchronization strategy (multi-layered approach)
+- Known limitations and bottlenecks
+- Scaling strategies (500 → 10,000+ users)
+- Comprehensive testing guide
+- Performance benchmarks
+
+### Quick Summary
+
+**Current Capacity**: ~500 concurrent users on single Node.js instance
+
+**Scaling Path**: Redis pub/sub enables horizontal scaling to 10,000+ users
+
+**Key Innovation**: Multi-layered sync strategy with latency compensation, sequence numbers, and periodic heartbeat
+
+---
+
 ## Deployment
 
 ### Client (Vercel/Netlify/Cloudflare Pages)
