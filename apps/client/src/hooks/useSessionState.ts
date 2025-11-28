@@ -219,8 +219,19 @@ export const useSessionState = ({
     })
 
     socket.on(SocketEvents.VIDEO_CHANGE, (data: VideoChangeBroadcastPayload) => {
+      // Skip if this is an old event (arrived out of order)
       if (data.seq <= lastSeqRef.current) return
-      lastSeqRef.current = data.seq
+      
+      // If we're very far behind (>10 events), we're a stale tab
+      // Accept the event and reset our sequence
+      const seqDiff = data.seq - lastSeqRef.current
+      if (seqDiff > 10) {
+        // Stale tab - reset sequence and accept
+        lastSeqRef.current = data.seq
+      } else {
+        // Normal event, just update sequence
+        lastSeqRef.current = data.seq
+      }
       setLastAction({ action: 'changed video', username: data.username })
       // Clear last action after 3 seconds
       if (lastActionTimeoutRef.current) {
