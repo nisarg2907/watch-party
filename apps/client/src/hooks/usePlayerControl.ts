@@ -8,6 +8,8 @@ interface UsePlayerControlProps {
   playerRef: React.MutableRefObject<YT.Player | null>
   pendingState: SessionState | null
   latency: number
+  isHandlingRemoteEventRef: React.MutableRefObject<boolean>
+  expectedPlayerStateRef: React.MutableRefObject<'playing' | 'paused' | null>
 }
 
 interface UsePlayerControlReturn {
@@ -23,11 +25,11 @@ export const usePlayerControl = ({
   playerRef,
   pendingState,
   latency,
+  isHandlingRemoteEventRef,
+  expectedPlayerStateRef,
 }: UsePlayerControlProps): UsePlayerControlReturn => {
-  const isHandlingRemoteEventRef = useRef<boolean>(false)
   const lastKnownTimeRef = useRef<number>(0)
   const isNewJoinerRef = useRef<boolean>(false)
-  const expectedPlayerStateRef = useRef<'playing' | 'paused' | null>(null)
   const lastSeekEmitRef = useRef<number>(0)
 
   const handlePlay = useCallback(() => {

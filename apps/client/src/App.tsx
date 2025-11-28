@@ -23,7 +23,14 @@ function App() {
   const { socket, connectionStatus, connectionError, latency } = useSocket(username, hasJoined)
 
   // Session state management
-  const { sessionState, lastAction, syncStatus, pendingState } = useSessionState({
+  const { 
+    sessionState, 
+    lastAction, 
+    syncStatus, 
+    pendingState,
+    isHandlingRemoteEventRef,
+    expectedPlayerStateRef,
+  } = useSessionState({
     socket,
     hasJoined,
     playerRef,
@@ -37,6 +44,8 @@ function App() {
     playerRef,
     pendingState,
     latency,
+    isHandlingRemoteEventRef,
+    expectedPlayerStateRef,
   })
 
   // Join handler

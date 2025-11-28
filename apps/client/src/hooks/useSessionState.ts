@@ -25,6 +25,8 @@ interface UseSessionStateReturn {
   syncStatus: { delta: number; timestamp: number } | null
   pendingState: SessionState | null
   mySocketId: string | null
+  isHandlingRemoteEventRef: React.MutableRefObject<boolean>
+  expectedPlayerStateRef: React.MutableRefObject<'playing' | 'paused' | null>
 }
 
 export const useSessionState = ({
@@ -307,5 +309,7 @@ export const useSessionState = ({
     syncStatus,
     pendingState: pendingStateRef.current,
     mySocketId: mySocketIdRef.current,
+    isHandlingRemoteEventRef,
+    expectedPlayerStateRef,
   }
 }
