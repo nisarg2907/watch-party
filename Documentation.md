@@ -279,13 +279,18 @@ watch-party/
 
 ## 🚀 Deployment
 
-**Current**: Deployed on Render (server) + Vercel (client)
+**Live Demo**: [https://watch-party-client-omega.vercel.app/](https://watch-party-client-omega.vercel.app/)
+
+**Infrastructure**:
+- **Backend**: Deployed on Render (Node.js server with WebSocket support)
+- **Frontend**: Deployed on Vercel (static React build)
 
 **Environment Variables**:
 - Client: `VITE_SOCKET_URL=https://your-server.onrender.com`
-- Server: `PORT=4000` (auto-set by Render)
 
 **CORS**: Configured for any origin (adjust for production)
+
+**Note**: First load may take 30-60 seconds if Render instance is sleeping (free tier cold start)
 
 ---
 
