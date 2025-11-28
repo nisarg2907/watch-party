@@ -108,8 +108,6 @@ export const useSessionState = ({
       lastSeqRef.current = data.seq
       
       const isFromMe = socket?.id === mySocketIdRef.current
-      console.log('[SESSION] Received play broadcast from', data.username, 'isFromMe:', isFromMe)
-      
       // Show action for all users
       setLastAction({ action: 'played', username: data.username })
       // Clear last action after 3 seconds
@@ -122,7 +120,6 @@ export const useSessionState = ({
       
       const player = playerRef.current
       if (player && hasJoinedRef.current) {
-        console.log('[SESSION] Setting isHandlingRemoteEvent = true for play')
         isHandlingRemoteEventRef.current = true
         expectedPlayerStateRef.current = 'playing'
         
@@ -139,12 +136,10 @@ export const useSessionState = ({
         player.playVideo()
         
         setTimeout(() => {
-          console.log('[SESSION] Clearing isHandlingRemoteEvent for play')
           isHandlingRemoteEventRef.current = false
         }, 300)
         
         setTimeout(() => {
-          console.log('[SESSION] Clearing expectedPlayerState for play')
           expectedPlayerStateRef.current = null
         }, 500)
       }
@@ -156,8 +151,6 @@ export const useSessionState = ({
       lastSeqRef.current = data.seq
       
       const isFromMe = socket?.id === mySocketIdRef.current
-      console.log('[SESSION] Received pause broadcast from', data.username, 'isFromMe:', isFromMe)
-      
       // Show action for all users
       setLastAction({ action: 'paused', username: data.username })
       // Clear last action after 3 seconds
@@ -170,7 +163,6 @@ export const useSessionState = ({
       
       const player = playerRef.current
       if (player && hasJoinedRef.current) {
-        console.log('[SESSION] Setting isHandlingRemoteEvent = true for pause')
         isHandlingRemoteEventRef.current = true
         expectedPlayerStateRef.current = 'paused'
         
@@ -187,12 +179,10 @@ export const useSessionState = ({
         player.pauseVideo()
         
         setTimeout(() => {
-          console.log('[SESSION] Clearing isHandlingRemoteEvent for pause')
           isHandlingRemoteEventRef.current = false
         }, 300)
         
         setTimeout(() => {
-          console.log('[SESSION] Clearing expectedPlayerState for pause')
           expectedPlayerStateRef.current = null
         }, 500)
       }

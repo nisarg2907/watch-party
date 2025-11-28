@@ -34,28 +34,24 @@ export const usePlayerControl = ({
 
   const handlePlay = useCallback(() => {
     if (isHandlingRemoteEventRef.current) {
-      console.log('[PLAYER] Skipping play emit - handling remote event')
       return
     }
     
     const player = playerRef.current
     if (socket && player) {
       const currentTime = player.getCurrentTime()
-      console.log('[PLAYER] Emitting play event at', currentTime)
       socket.emit(SocketEvents.PLAY, { time: currentTime })
     }
   }, [socket, playerRef, isHandlingRemoteEventRef])
 
   const handlePause = useCallback(() => {
     if (isHandlingRemoteEventRef.current) {
-      console.log('[PLAYER] Skipping pause emit - handling remote event')
       return
     }
     
     const player = playerRef.current
     if (socket && player) {
       const currentTime = player.getCurrentTime()
-      console.log('[PLAYER] Emitting pause event at', currentTime)
       socket.emit(SocketEvents.PAUSE, { time: currentTime })
     }
   }, [socket, playerRef, isHandlingRemoteEventRef])
@@ -133,20 +129,15 @@ export const usePlayerControl = ({
   }, [hasJoined, pendingState, latency, playerRef])
 
   const onStateChange = useCallback((event: YT.PlayerEvent) => {
-    console.log('[PLAYER] State change:', event.data, 'isHandling:', isHandlingRemoteEventRef.current, 'expected:', expectedPlayerStateRef.current)
-    
     if (isHandlingRemoteEventRef.current) {
-      console.log('[PLAYER] Skipping state change - handling remote event')
       return
     }
     
     // Check if this state change matches our expected state (from remote)
     if (event.data === 1 && expectedPlayerStateRef.current === 'playing') {
-      console.log('[PLAYER] Skipping play - expected state')
       return
     }
     if (event.data === 2 && expectedPlayerStateRef.current === 'paused') {
-      console.log('[PLAYER] Skipping pause - expected state')
       return
     }
     

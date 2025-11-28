@@ -43,10 +43,8 @@ export const useSocket = (username: string, hasJoined: boolean): UseSocketReturn
     
     // Auto-rejoin on reconnection
     newSocket.on('reconnect', () => {
-      console.log('[SOCKET] Reconnected - attempting to rejoin')
       if (hasJoinedRef.current && username) {
         newSocket.emit(SocketEvents.JOIN, { username })
-        console.log('[SOCKET] Auto-rejoined as', username)
       }
     })
 

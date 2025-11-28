@@ -25,8 +25,7 @@ function App() {
   // Session state management
   const { 
     sessionState, 
-    lastAction, 
-    syncStatus, 
+    lastAction,
     pendingState,
     isHandlingRemoteEventRef,
     expectedPlayerStateRef,
@@ -100,7 +99,7 @@ function App() {
             />
           </section>
 
-          <SyncStatus lastAction={lastAction} syncStatus={syncStatus} />
+          <SyncStatus lastAction={lastAction} />
         </div>
 
         {/* Sidebar */}
